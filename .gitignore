@@ -1,0 +1,64 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.so
+*.egg
+*.egg-info/
+dist/
+build/
+*.log
+
+# Virtual Environments
+venv/
+env/
+
+
+# Jupyter Notebooks
+.ipynb_checkpoints/
+
+# VS Code
+.vscode/
+
+# System files
+.DS_Store
+Thumbs.db
+
+# FastAPI / Uvicorn
+*.db
+instance/
+.env
+.env.*
+
+# Node.js / Frontend
+node_modules/
+npm-debug.log
+yarn-error.log
+/.next
+/build
+coverage/
+
+# Compiled files
+*.exe
+*.dll
+*.obj
+*.o
+*.a
+*.lib
+
+# Media / Temp files
+*.mp4
+*.avi
+*.jpg
+*.jpeg
+*.png
+*.bmp
+*.wav
+*.mp3
+*.webm
+
+# Local data storage (for uploads, cache, etc.)
+uploads/
+cache/
+tmp/
