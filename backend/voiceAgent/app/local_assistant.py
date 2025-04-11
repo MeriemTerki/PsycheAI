@@ -3,6 +3,7 @@ import string
 import asyncio
 import requests
 import wave
+import io
 import pyaudio
 from groq import AsyncGroq
 from deepgram import (
@@ -15,19 +16,25 @@ SYSTEM_PROMPT = """You are a helpful and enthusiastic assistant. Speak in a huma
 Keep your answers as short and concise as possible, like in a conversation, ideally no more than 120 characters.
 """
 
-DEEPGRAM_TTS_URL = 'https://api.deepgram.com/v1/speak?model=aura-luna-en&encoding=linear16&sample_rate=24000'
+# Improved TTS parameters for clearer speech
+DEEPGRAM_TTS_URL = 'https://api.deepgram.com/v1/speak?model=aura-asteria-en&encoding=linear16&sample_rate=24000'
 
 console = Console()
 groq = AsyncGroq(api_key=settings.GROQ_API_KEY)
 
-# Create the Deepgram client
-deepgram_config = DeepgramClientOptions(options={'keepalive': 'true'})
+# Create the Deepgram client with proper configuration
+deepgram_config = DeepgramClientOptions(
+    options={
+        'keepalive': 'true',
+        'timeout': '5000'
+    }
+)
 deepgram = DeepgramClient(settings.DEEPGRAM_API_KEY, config=deepgram_config)
 
 # Configure Deepgram options for live transcription
 dg_connection_options = LiveOptions(
     model='nova-2',
-    language='en',
+    language='en-US',
     smart_format=True,
     encoding='linear16',
     channels=1,
@@ -39,8 +46,17 @@ dg_connection_options = LiveOptions(
 )
 
 async def assistant_chat(messages, model='llama3-8b-8192'):
-    res = await groq.chat.completions.create(messages=messages, model=model)
-    return res.choices[0].message.content
+    try:
+        res = await groq.chat.completions.create(
+            messages=messages,
+            model=model,
+            temperature=0.7,
+            max_tokens=150
+        )
+        return res.choices[0].message.content
+    except Exception as e:
+        console.print(f"Error in assistant_chat: {e}", style="red")
+        return "Sorry, I encountered an error. Could you please repeat that?"
 
 async def transcribe_audio():
     transcript_parts = []
@@ -72,6 +88,7 @@ async def transcribe_audio():
         
         async def on_error(self, error, **kwargs):
             console.print(f'Error: {error}', style='red')
+            transcription_complete.set()  # Ensure we don't hang on error
         
         dg_connection.on(LiveTranscriptionEvents.Transcript, on_message)
         dg_connection.on(LiveTranscriptionEvents.UtteranceEnd, on_utterance_end)
@@ -103,50 +120,99 @@ def should_end_conversation(text):
         return False
     text = text.translate(str.maketrans('', '', string.punctuation))
     text = text.strip().lower()
-    return re.search(r'\b(goodbye|bye)\b$', text) is not None
+    return re.search(r'\b(goodbye|bye|exit|quit)\b$', text) is not None
 
 def text_to_speech(text):
-    headers = {
-        'Authorization': f'Token {settings.DEEPGRAM_API_KEY}',
-        'Content-Type': 'application/json'
-    }
-    res = requests.post(DEEPGRAM_TTS_URL, headers=headers, json={'text': text}, stream=True)
-    with wave.open(res.raw, 'rb') as wf:
-        p = pyaudio.PyAudio()
-        stream = p.open(
-            format=p.get_format_from_width(wf.getsampwidth()),
-            channels=wf.getnchannels(),
-            rate=wf.getframerate(),
-            frames_per_buffer=1024,
-            output=True
+    try:
+        headers = {
+            'Authorization': f'Token {settings.DEEPGRAM_API_KEY}',
+            'Content-Type': 'application/json'
+        }
+
+        formatted_text = text.replace('.', '. ').replace('?', '? ').replace('!', '! ')
+
+        res = requests.post(
+            DEEPGRAM_TTS_URL,
+            headers=headers,
+            json={'text': formatted_text},
+            stream=True,
+            timeout=15
         )
-        while len(data := wf.readframes(1024)): 
-            stream.write(data)
-        
-        stream.close()
-        p.terminate()
+
+        if res.status_code != 200:
+            console.print(f"TTS API error: {res.status_code} - {res.text}", style="red")
+            return
+
+        audio_buffer = io.BytesIO(res.content)
+
+        with wave.open(audio_buffer, 'rb') as wf:
+            p = pyaudio.PyAudio()
+
+            try:
+                stream = p.open(
+                    format=p.get_format_from_width(wf.getsampwidth()),
+                    channels=wf.getnchannels(),
+                    rate=wf.getframerate(),
+                    output=True
+                )
+
+                data = wf.readframes(4096)
+                while data:
+                    stream.write(data)
+                    data = wf.readframes(4096)
+
+                stream.stop_stream()
+                stream.close()
+            except Exception as e:
+                console.print(f"Audio playback error: {e}", style="red")
+            finally:
+                p.terminate()
+
+    except Exception as e:
+        console.print(f"Error in text_to_speech: {e}", style="red")
 
 async def run():
     system_message = {'role': 'system', 'content': SYSTEM_PROMPT}
     memory_size = 10
-    messages = []
+    messages = [system_message]
+    
+    console.print("\n[bold green]Voice Assistant Ready![/bold green]\n")
+    
     while True:
-        user_message = await transcribe_audio()
-        if not user_message:
-            continue
+        try:
+            user_message = await transcribe_audio()
+            if not user_message:
+                console.print("Couldn't understand that. Please try again.", style="yellow")
+                continue
+                
+            messages.append({'role': 'user', 'content': user_message})
+
+            if should_end_conversation(user_message):
+                goodbye_msg = "Goodbye! Have a great day!"
+                console.print(goodbye_msg, style="dark_orange")
+                text_to_speech(goodbye_msg)
+                break
+
+            if len(messages) > memory_size:
+                messages = [system_message] + messages[-(memory_size-1):]
+
+            assistant_message = await assistant_chat(messages)
+            messages.append({'role': 'assistant', 'content': assistant_message})
+            console.print(f"Assistant: {assistant_message}", style="dark_orange")
+            text_to_speech(assistant_message)
             
-        messages.append({'role': 'user', 'content': user_message})
-
-        if should_end_conversation(user_message):
+        except KeyboardInterrupt:
+            console.print("\nExiting...", style="red")
             break
-
-        assistant_message = await assistant_chat([system_message] + messages[-memory_size+1:])
-        messages.append({'role': 'assistant', 'content': assistant_message})
-        console.print(assistant_message, style='dark_orange')
-        text_to_speech(assistant_message)
+        except Exception as e:
+            console.print(f"Unexpected error: {e}", style="red")
+            continue
 
 def main():
-    asyncio.run(run())
+    try:
+        asyncio.run(run())
+    except KeyboardInterrupt:
+        console.print("\nVoice assistant stopped.", style="red")
 
 if __name__ == "__main__":
     main()
