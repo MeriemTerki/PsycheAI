@@ -8,10 +8,14 @@ from deepgram import (
 )
 from groq import AsyncGroq
 from app.config import settings
+from app.rag.retriever import get_retriever
 
 DEEPGRAM_TTS_URL = 'https://api.deepgram.com/v1/speak?model=aura-luna-en'
 SYSTEM_PROMPT = """You are a helpful and enthusiastic assistant. Speak in a human, conversational tone.
 Keep your answers as short and concise as possible, like in a conversation, ideally no more than 120 characters.
+Use the following context to answer the question. If you don't know, just say you don't know.
+
+Context: {context}
 """
 
 deepgram_config = DeepgramClientOptions(options={'keepalive': 'true'})
@@ -37,10 +41,45 @@ class Assistant:
         self.memory_size = memory_size
         self.httpx_client = httpx.AsyncClient()
         self.finish_event = asyncio.Event()
+        self.retriever = get_retriever()
     
     async def assistant_chat(self, messages, model='llama3-8b-8192'):
-        res = await groq.chat.completions.create(messages=messages, model=model)
-        return res.choices[0].message.content
+        try:
+            # Get latest user message
+            user_message = next(
+                (msg['content'] for msg in reversed(messages) if msg['role'] == 'user'),
+                messages[-1]['content']
+            )
+            
+            # Retrieve relevant documents
+            docs = await asyncio.get_event_loop().run_in_executor(
+                None,
+                lambda: self.retriever.get_relevant_documents(user_message)
+            )
+            context = "\n".join([doc.page_content for doc in docs[:3]])
+            
+            # Update system prompt with context
+            system_with_context = {
+                'role': 'system',
+                'content': SYSTEM_PROMPT.format(context=context)
+            }
+            
+            # Prepare messages with context
+            rag_messages = [system_with_context] + [
+                msg for msg in messages[-self.memory_size:] 
+                if msg['role'] != 'system'
+            ]
+            
+            res = await groq.chat.completions.create(
+                messages=rag_messages,
+                model=model,
+                temperature=0.7,
+                max_tokens=150
+            )
+            return res.choices[0].message.content
+        except Exception as e:
+            print(f"Error in assistant_chat: {e}")
+            return "Sorry, I encountered an error. Could you please repeat that?"
     
     def should_end_conversation(self, text):
         text = text.translate(str.maketrans('', '', string.punctuation))

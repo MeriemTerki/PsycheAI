@@ -1,4 +1,4 @@
-from app.local_assistant import main
+from app.rag_assistant import main
 
 if __name__ == "__main__":
     main()

@@ -11,9 +11,17 @@ from deepgram import (
 )
 from rich.console import Console
 from app.config import settings
+from pinecone import Pinecone, ServerlessSpec
+from langchain_community.embeddings import CohereEmbeddings
+import os
+from dotenv import load_dotenv
+
+# Load environment variables from .env file
+load_dotenv()
 
 SYSTEM_PROMPT = """You are a helpful and enthusiastic assistant. Speak in a human, conversational tone.
 Keep your answers as short and concise as possible, like in a conversation, ideally no more than 120 characters.
+Use the provided context to answer questions accurately. If you don't know the answer, say so.
 """
 
 # Improved TTS parameters for clearer speech
@@ -21,6 +29,17 @@ DEEPGRAM_TTS_URL = 'https://api.deepgram.com/v1/speak?model=aura-asteria-en&enco
 
 console = Console()
 groq = AsyncGroq(api_key=settings.GROQ_API_KEY)
+
+# Initialize Pinecone
+pc = Pinecone(api_key=os.getenv("PINECONE_API_KEY"))
+index_name = "ai-agent"  # Replace with your index name
+
+# Initialize Cohere embeddings
+embeddings = CohereEmbeddings(
+    cohere_api_key=os.getenv("COHERE_API_KEY"),
+    model="embed-english-v2.0",
+    user_agent="ai-agent"
+)
 
 # Create the Deepgram client with proper configuration
 deepgram_config = DeepgramClientOptions(
@@ -45,8 +64,60 @@ dg_connection_options = LiveOptions(
     endpointing=500,
 )
 
+async def get_relevant_context(query: str, top_k: int = 3) -> str:
+    """
+    Retrieve relevant context from Pinecone based on the user query using Cohere embeddings.
+    """
+    try:
+        # Generate embedding for the query using Cohere
+        query_embedding = embeddings.embed_query(query)
+        
+        # Query Pinecone index
+        index = pc.Index(index_name)
+        results = index.query(
+            vector=query_embedding,
+            top_k=top_k,
+            include_metadata=True
+        )
+        
+        # Extract and format the context
+        context = ""
+        for match in results.matches:
+            context += f"{match.metadata.get('text', '')}\n"
+        
+        return context.strip()
+    
+    except Exception as e:
+        console.print(f"Error retrieving context: {e}", style="red")
+        return ""
+
 async def assistant_chat(messages, model='llama3-8b-8192'):
     try:
+        # Check if the last message is a user query that might need RAG
+        user_query = messages[-1]['content'] if messages[-1]['role'] == 'user' else ""
+        
+        # Only use RAG for substantive questions (not greetings, etc.)
+        if (len(user_query.split()) > 3 and 
+            not any(word in user_query.lower() for word in ['hi', 'hello', 'hey', 'bye', 'thanks'])):
+            
+            context = await get_relevant_context(user_query)
+            if context:
+                # Add context to the system prompt for this query
+                rag_system_prompt = SYSTEM_PROMPT + f"\n\nUse this context to answer the question:\n{context}"
+                messages_with_context = [
+                    {'role': 'system', 'content': rag_system_prompt},
+                    *messages[1:]  # Skip the original system prompt
+                ]
+                
+                res = await groq.chat.completions.create(
+                    messages=messages_with_context,
+                    model=model,
+                    temperature=0.7,
+                    max_tokens=150
+                )
+                return res.choices[0].message.content
+        
+        # Default response without RAG
         res = await groq.chat.completions.create(
             messages=messages,
             model=model,
@@ -54,6 +125,7 @@ async def assistant_chat(messages, model='llama3-8b-8192'):
             max_tokens=150
         )
         return res.choices[0].message.content
+        
     except Exception as e:
         console.print(f"Error in assistant_chat: {e}", style="red")
         return "Sorry, I encountered an error. Could you please repeat that?"
