@@ -6,7 +6,7 @@ import asyncio
 
 app = FastAPI()
 
-# Allow cross-origin requests if needed
+# CORS config
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -15,11 +15,17 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# In-memory transcript store
+current_transcript = ""
+
 class ChatRequest(BaseModel):
     messages: list
 
 class ChatResponse(BaseModel):
     reply: str
+
+class TranscriptUpload(BaseModel):
+    transcript: str
 
 @app.post("/chat", response_model=ChatResponse)
 async def chat(request: ChatRequest):
@@ -28,6 +34,18 @@ async def chat(request: ChatRequest):
         return {"reply": reply}
     except Exception as e:
         return {"reply": f"Error: {e}"}
+
+@app.post("/upload_transcript")
+async def upload_transcript(data: TranscriptUpload):
+    global current_transcript
+    current_transcript = data.transcript
+    return {"message": "Transcript received successfully."}
+
+@app.get("/transcript")
+async def get_transcript():
+    if not current_transcript:
+        return {"transcript": "No transcript available."}
+    return {"transcript": current_transcript}
 
 if __name__ == "__main__":
     import uvicorn

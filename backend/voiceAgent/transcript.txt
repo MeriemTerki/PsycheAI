@@ -1,0 +1,13 @@
+User: Hi. How are you doing?
+Assistant: Hi there! I'm doing well, thank you for asking. I'm here to listen and support you. How about you? What's been on your mind lately?
+User: Fine. Volley come anxious and stressed.
+Assistant: I hear that you've been feeling anxious and stressed. That can be really overwhelming. Would you like to talk a bit more about what's been causing those feelings? Sometimes sharing what's on your mind can help you feel a bit better.
+User: I think the stress of the workload at school
+Assistant: It sounds like the pressure to keep up with schoolwork is taking a toll on you. That can be really challenging. Have you tried breaking down your tasks into smaller, more manageable chunks to help you feel more in control?
+User: Yes. I did.
+Assistant: You've already tried breaking down your tasks, that's great! Sometimes, even with the best planning, stress can still creep in. Would you like to explore some relaxation techniques to help you cope with those feelings when they arise?
+User: Yeah. For sure.
+Assistant: That's a great attitude! Deep breathing exercises can be really helpful in calming your mind and body. Would you like to try a quick exercise with me?
+User: Yeah. Let's go.
+Assistant: Take a slow, deep breath in through your nose, counting to 4... hold it for a second... and then exhale slowly through your mouth, counting to 4. Repeat that a few times, and notice how your body and mind start to relax.
+User: This was really helpful. Thank you so much. Goodbye.
