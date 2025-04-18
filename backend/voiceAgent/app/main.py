@@ -1,30 +1,34 @@
-import asyncio
-from fastapi import FastAPI, WebSocket
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
-from app.config import settings
-
-from app.assistant import Assistant
+from pydantic import BaseModel
+from app.rag_assistant import assistant_chat, SYSTEM_PROMPT
+import asyncio
 
 app = FastAPI()
 
+# Allow cross-origin requests if needed
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=settings.ALLOW_ORIGINS,
+    allow_origins=["*"],
     allow_credentials=True,
-    allow_methods=['*'],
-    allow_headers=['*'],
+    allow_methods=["*"],
+    allow_headers=["*"],
 )
 
-@app.head('/health')
-@app.get('/health')
-def health_check():
-    return 'ok'
+class ChatRequest(BaseModel):
+    messages: list
 
-@app.websocket('/listen')
-async def websocket_listen(websocket: WebSocket):
-    await websocket.accept()
-    assistant = Assistant(websocket)
+class ChatResponse(BaseModel):
+    reply: str
+
+@app.post("/chat", response_model=ChatResponse)
+async def chat(request: ChatRequest):
     try:
-        await asyncio.wait_for(assistant.run(), timeout=300)
-    except TimeoutError:
-        print('Connection timeout')
+        reply = await assistant_chat(request.messages)
+        return {"reply": reply}
+    except Exception as e:
+        return {"reply": f"Error: {e}"}
+
+if __name__ == "__main__":
+    import uvicorn
+    uvicorn.run("app.main:app", host="0.0.0.0", port=8000, reload=True)
