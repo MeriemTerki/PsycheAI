@@ -15,13 +15,27 @@ from pinecone import Pinecone, ServerlessSpec
 from langchain_community.embeddings import CohereEmbeddings
 import os
 from dotenv import load_dotenv
+from datetime import datetime
+import json
 
 # Load environment variables from .env file
 load_dotenv()
 
-SYSTEM_PROMPT = """You are a helpful and enthusiastic assistant. Speak in a human, conversational tone.
-Keep your answers as short and concise as possible, like in a conversation, ideally no more than 120 characters.
-Use the provided context to answer questions accurately. If you don't know the answer, say so.
+SYSTEM_PROMPT = """You are a compassionate, professional mental health assistant. Your role is to:
+1. **Listen actively** and respond with empathy, warmth, and non-judgmental support.
+2. **Use the provided context** (therapy Q&A, techniques, or resources) to offer accurate, evidence-based guidance.
+3. **Prioritize safety**: Never diagnose or replace human therapists. For crises (self-harm, abuse), say:
+   "I'm deeply concerned. Please contact [crisis hotline] or your therapist immediately."
+4. **Keep responses concise** (1-2 sentences max) for voice interactions, but adjust for complex topics.
+5. **Encourage professional help**: 
+   "That sounds really challenging. A therapist could help you explore this further."
+
+Example tone:
+- "I hear how painful this feels. Many people find mindfulness helpful—would you like a short exercise?"
+- "It's brave of you to share this. The resources I have suggest [context tip]."
+
+Context to use (if available):
+{context}
 """
 
 # Improved TTS parameters for clearer speech
@@ -93,8 +107,14 @@ async def get_relevant_context(query: str, top_k: int = 3) -> str:
 
 async def assistant_chat(messages, model='llama3-8b-8192'):
     try:
+        # Create a clean version of messages without timestamps for the API
+        api_messages = [
+            {'role': msg['role'], 'content': msg['content']}
+            for msg in messages
+        ]
+        
         # Check if the last message is a user query that might need RAG
-        user_query = messages[-1]['content'] if messages[-1]['role'] == 'user' else ""
+        user_query = api_messages[-1]['content'] if api_messages[-1]['role'] == 'user' else ""
         
         # Only use RAG for substantive questions (not greetings, etc.)
         if (len(user_query.split()) > 3 and 
@@ -106,7 +126,7 @@ async def assistant_chat(messages, model='llama3-8b-8192'):
                 rag_system_prompt = SYSTEM_PROMPT + f"\n\nUse this context to answer the question:\n{context}"
                 messages_with_context = [
                     {'role': 'system', 'content': rag_system_prompt},
-                    *messages[1:]  # Skip the original system prompt
+                    *api_messages[1:]  # Skip the original system prompt
                 ]
                 
                 res = await groq.chat.completions.create(
@@ -119,7 +139,7 @@ async def assistant_chat(messages, model='llama3-8b-8192'):
         
         # Default response without RAG
         res = await groq.chat.completions.create(
-            messages=messages,
+            messages=api_messages,
             model=model,
             temperature=0.7,
             max_tokens=150
@@ -243,10 +263,48 @@ def text_to_speech(text):
     except Exception as e:
         console.print(f"Error in text_to_speech: {e}", style="red")
 
+def save_conversation_log(conversation_log):
+    """Save the conversation log to a JSON file with a timestamp."""
+    if not conversation_log:
+        return
+        
+    try:
+        # Create logs directory if it doesn't exist
+        os.makedirs("conversation_logs", exist_ok=True)
+        
+        # Create a filename with timestamp
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        filename = f"conversation_logs/conversation_log_{timestamp}.json"
+        
+        # Prepare the log data
+        log_data = {
+            "start_time": conversation_log[0]['timestamp'],
+            "end_time": conversation_log[-1]['timestamp'],
+            "messages": [
+                {'role': msg['role'], 'content': msg['content'], 'timestamp': msg['timestamp']}
+                for msg in conversation_log
+            ]
+        }
+        
+        # Write to file
+        with open(filename, 'w') as f:
+            json.dump(log_data, f, indent=2)
+            
+        console.print(f"\nConversation log saved to {filename}", style="green")
+    except Exception as e:
+        console.print(f"Error saving conversation log: {e}", style="red")
+
 async def run():
     system_message = {'role': 'system', 'content': SYSTEM_PROMPT}
     memory_size = 10
     messages = [system_message]
+    
+    # Create a conversation log that will store all messages with timestamps
+    conversation_log = [{
+        'role': 'system', 
+        'content': SYSTEM_PROMPT, 
+        'timestamp': datetime.now().isoformat()
+    }]
     
     console.print("\n[bold green]Voice Assistant Ready![/bold green]\n")
     
@@ -257,24 +315,55 @@ async def run():
                 console.print("Couldn't understand that. Please try again.", style="yellow")
                 continue
                 
-            messages.append({'role': 'user', 'content': user_message})
+            # Add to messages (without timestamp for API)
+            user_msg_obj = {'role': 'user', 'content': user_message}
+            messages.append(user_msg_obj)
+            
+            # Add to conversation log (with timestamp)
+            conversation_log.append({
+                'role': 'user',
+                'content': user_message,
+                'timestamp': datetime.now().isoformat()
+            })
 
             if should_end_conversation(user_message):
                 goodbye_msg = "Goodbye! Have a great day!"
                 console.print(goodbye_msg, style="dark_orange")
+                
+                # Add assistant's goodbye message to both lists
+                messages.append({'role': 'assistant', 'content': goodbye_msg})
+                conversation_log.append({
+                    'role': 'assistant',
+                    'content': goodbye_msg,
+                    'timestamp': datetime.now().isoformat()
+                })
+                
                 text_to_speech(goodbye_msg)
+                
+                # Save the conversation log to a file
+                save_conversation_log(conversation_log)
                 break
 
             if len(messages) > memory_size:
                 messages = [system_message] + messages[-(memory_size-1):]
 
             assistant_message = await assistant_chat(messages)
+            
+            # Add assistant response to both lists
             messages.append({'role': 'assistant', 'content': assistant_message})
+            conversation_log.append({
+                'role': 'assistant',
+                'content': assistant_message,
+                'timestamp': datetime.now().isoformat()
+            })
+            
             console.print(f"Assistant: {assistant_message}", style="dark_orange")
             text_to_speech(assistant_message)
             
         except KeyboardInterrupt:
             console.print("\nExiting...", style="red")
+            # Save the conversation log if interrupted
+            save_conversation_log(conversation_log)
             break
         except Exception as e:
             console.print(f"Unexpected error: {e}", style="red")
