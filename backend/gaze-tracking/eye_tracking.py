@@ -6,6 +6,13 @@ import os
 import time
 from datetime import datetime
 import mediapipe as mp
+import argparse
+
+# Parse duration argument
+parser = argparse.ArgumentParser()
+parser.add_argument('--duration', type=int, default=30, help='Duration of eye tracking in seconds')
+args = parser.parse_args()
+capture_duration = args.duration
 
 # Initialize MediaPipe Face Mesh
 mp_face_mesh = mp.solutions.face_mesh
@@ -30,7 +37,7 @@ FIELD_NAMES = [
     "pupil_dilation", "fixation_duration", "aoi", "ear_value"
 ]
 
-# Landmark indices for MediaPipe Face Mesh
+# Landmark indices
 LEFT_EYE_INDICES = [362, 385, 387, 263, 373, 380]
 RIGHT_EYE_INDICES = [33, 160, 158, 133, 153, 144]
 LEFT_IRIS_CENTER = 468
@@ -50,27 +57,23 @@ ear_values = []
 pupil_base_size = None
 
 def init_csv():
-    """Initialize CSV file with headers"""
     if not os.path.exists(CSV_FILENAME):
         with open(CSV_FILENAME, 'w', newline='') as f:
             writer = csv.DictWriter(f, fieldnames=FIELD_NAMES)
             writer.writeheader()
 
 def log_data(data):
-    """Append data to CSV file"""
     with open(CSV_FILENAME, 'a', newline='') as f:
         writer = csv.DictWriter(f, fieldnames=FIELD_NAMES)
         writer.writerow(data)
 
 def calculate_ear(eye_points):
-    """Calculate Eye Aspect Ratio from eye landmarks"""
     v1 = distance.euclidean(eye_points[1], eye_points[5])
     v2 = distance.euclidean(eye_points[2], eye_points[4])
     h = distance.euclidean(eye_points[0], eye_points[3])
     return (v1 + v2) / (2.0 * h)
 
 def get_eye_ear(face_landmarks, eye_indices, frame_width, frame_height):
-    """Extract eye landmarks and calculate EAR"""
     eye_points = []
     for index in eye_indices:
         landmark = face_landmarks.landmark[index]
@@ -80,12 +83,10 @@ def get_eye_ear(face_landmarks, eye_indices, frame_width, frame_height):
     return calculate_ear(eye_points)
 
 def get_iris_center(face_landmarks, iris_index, frame_width, frame_height):
-    """Get iris center coordinates"""
     landmark = face_landmarks.landmark[iris_index]
     return (int(landmark.x * frame_width), int(landmark.y * frame_height))
 
 def get_iris_radius(face_landmarks, center, radius_indices, frame_width, frame_height):
-    """Calculate average iris radius"""
     center_x, center_y = center
     total_dist = 0.0
     for index in radius_indices:
@@ -95,13 +96,12 @@ def get_iris_radius(face_landmarks, center, radius_indices, frame_width, frame_h
         total_dist += distance.euclidean((x, y), (center_x, center_y))
     return total_dist / len(radius_indices)
 
-# Initialize CSV and video capture
+# Initialize
 init_csv()
 cap = cv2.VideoCapture(0)
 cap.set(cv2.CAP_PROP_FRAME_WIDTH, 640)
 cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 480)
 
-# Calibration routine
 print("Calibrating... (keep eyes open)")
 calibration_frames = []
 start_time = time.time()
@@ -112,14 +112,10 @@ while time.time() - start_time < 3:
         results = face_mesh.process(cv2.cvtColor(frame, cv2.COLOR_BGR2RGB))
         if results.multi_face_landmarks:
             face_landmarks = results.multi_face_landmarks[0]
-            
-            # Calculate EAR
             ear_left = get_eye_ear(face_landmarks, LEFT_EYE_INDICES, 640, 480)
             ear_right = get_eye_ear(face_landmarks, RIGHT_EYE_INDICES, 640, 480)
             avg_ear = (ear_left + ear_right) / 2.0
             ear_values.append(avg_ear)
-            
-            # Calculate pupil size
             left_iris = get_iris_center(face_landmarks, LEFT_IRIS_CENTER, 640, 480)
             right_iris = get_iris_center(face_landmarks, RIGHT_IRIS_CENTER, 640, 480)
             left_radius = get_iris_radius(face_landmarks, left_iris, LEFT_IRIS_RADIUS_INDICES, 640, 480)
@@ -135,8 +131,11 @@ if calibration_frames:
     print(f"Base pupil size: {pupil_base_size:.2f}px")
     calibrated = True
 
-# Main processing loop
-while True:
+print(f"Capturing eye tracking data for {capture_duration} seconds...")
+start_time = time.time()
+
+# Main loop
+while time.time() - start_time < capture_duration:
     log_entry = {
         "timestamp": datetime.now().isoformat(),
         "gaze_x": None, "gaze_y": None,
@@ -155,8 +154,6 @@ while True:
 
     if results.multi_face_landmarks:
         face_landmarks = results.multi_face_landmarks[0]
-        
-        # Blink detection
         ear_left = get_eye_ear(face_landmarks, LEFT_EYE_INDICES, frame_width, frame_height)
         ear_right = get_eye_ear(face_landmarks, RIGHT_EYE_INDICES, frame_width, frame_height)
         avg_ear = (ear_left + ear_right) / 2.0
@@ -169,14 +166,12 @@ while True:
                 blink_counter += 1
             blink_frames = 0
 
-        # Gaze detection
         left_iris = get_iris_center(face_landmarks, LEFT_IRIS_CENTER, frame_width, frame_height)
         right_iris = get_iris_center(face_landmarks, RIGHT_IRIS_CENTER, frame_width, frame_height)
         gaze_x = (left_iris[0] + right_iris[0]) // 2
         gaze_y = (left_iris[1] + right_iris[1]) // 2
         log_entry["gaze_x"], log_entry["gaze_y"] = gaze_x, gaze_y
 
-        # Fixation tracking
         movement = distance.euclidean((gaze_x, gaze_y), last_gaze)
         if movement < FIXATION_THRESHOLD:
             fixation_start = fixation_start or time.time()
@@ -185,17 +180,12 @@ while True:
             fixation_start = time.time()
         last_gaze = (gaze_x, gaze_y)
 
-        # AOI detection
         current_aoi = []
         for zone, (x1, y1, x2, y2) in AOI_ZONES.items():
             if x1 <= gaze_x <= x2 and y1 <= gaze_y <= y2:
                 current_aoi.append(zone)
         log_entry["aoi"] = ",".join(current_aoi) if current_aoi else "None"
-        cv2.circle(frame, (gaze_x, gaze_y), 8, (0, 255, 0), -1)
-        cv2.putText(frame, f"AOI: {log_entry['aoi']}", (10, 30),
-                    cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 0), 2)
 
-        # Pupil dilation
         if calibrated:
             left_radius = get_iris_radius(face_landmarks, left_iris, LEFT_IRIS_RADIUS_INDICES, frame_width, frame_height)
             right_radius = get_iris_radius(face_landmarks, right_iris, RIGHT_IRIS_RADIUS_INDICES, frame_width, frame_height)
@@ -203,30 +193,15 @@ while True:
             pupil_dilation = ((pupil_size - pupil_base_size) / pupil_base_size) * 100
             log_entry["pupil_dilation"] = pupil_dilation
 
-    # Calculate blink rate
     fps = cap.get(cv2.CAP_PROP_FPS)
     log_entry["blink_rate"] = (blink_counter / (frame_counter / fps)) * 60 if frame_counter > 0 else 0
 
-    # Display metrics
-    y_offset = 60
-    for metric, value in [
-        ("Blink Rate", log_entry["blink_rate"]),
-        ("Fixation", log_entry["fixation_duration"]),
-        ("Pupil", log_entry["pupil_dilation"]),
-        ("EAR", log_entry["ear_value"])
-    ]:
-        if value is not None:
-            cv2.putText(frame, f"{metric}: {value:.1f}{'%' if metric == 'Pupil' else ''}", 
-                       (10, y_offset), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 0), 2)
-            y_offset += 30
-
-    # Log data and display
     log_data(log_entry)
-    cv2.imshow('Eye Tracking', frame)
     frame_counter += 1
-
+    cv2.imshow('Eye Tracking', frame)
     if cv2.waitKey(1) & 0xFF == ord('q'):
         break
 
+print("✅ Eye tracking capture finished.")
 cap.release()
 cv2.destroyAllWindows()

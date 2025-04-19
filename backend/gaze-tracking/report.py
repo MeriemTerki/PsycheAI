@@ -122,7 +122,7 @@ async def main():
     rag_context = await get_rag_context("psychological interpretation of eye-tracking data")
     interpretation = await interpret_with_groq(csv_summary, stats_summary, rag_context)
     
-    console.print("🔍 [bold magenta]Interpretation:[/bold magenta]\n")
+    console.print(" [bold magenta]Interpretation:[/bold magenta]\n")
     console.print(interpretation, style="cyan")
 
 # Run the async entry point
