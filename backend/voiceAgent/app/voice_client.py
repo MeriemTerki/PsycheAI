@@ -4,8 +4,8 @@ from app.rag_assistant import transcribe_audio, text_to_speech, SYSTEM_PROMPT, s
 from rich.console import Console
 
 console = Console()
-API_URL = "http://localhost:8000/chat"
-UPLOAD_TRANSCRIPT_URL = "http://localhost:8000/upload_transcript"
+API_URL = "http://127.0.0.1:8002/chat"
+UPLOAD_TRANSCRIPT_URL = "http://127.0.0.1:8002/upload_transcript"
 
 async def run_voice_client():
     system_message = {'role': 'system', 'content': SYSTEM_PROMPT}

@@ -10,7 +10,7 @@ from deepgram import (
     DeepgramClient, DeepgramClientOptions, LiveTranscriptionEvents, LiveOptions, Microphone
 )
 from rich.console import Console
-from app.config import settings
+from .config import settings
 from pinecone import Pinecone, ServerlessSpec
 from langchain_community.embeddings import CohereEmbeddings
 import os

@@ -40,7 +40,7 @@ embeddings = CohereEmbeddings(
 )
 
 # Step 1: Run real-time inference and save to CSV
-def run_emotion_inference(duration_sec=10):
+def run_emotion_inference(duration_sec=30):
     model = YOLO("models/best_v2.pt")
     cap = cv2.VideoCapture(0)
     data = []
