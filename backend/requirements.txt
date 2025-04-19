@@ -98,7 +98,6 @@ prometheus-fastapi-instrumentator==6.0.0
 prometheus_client==0.21.1
 prompt_toolkit==3.0.50
 propcache==0.3.0
-protobuf==6.30.1
 psutil==7.0.0
 pure_eval==0.2.3
 py-cpuinfo==9.0.0
@@ -177,3 +176,10 @@ pypdf
 langchain-cohere>=0.0.2
 langchain-pinecone>=0.0.3
 pyaudio 
+opencv-python
+mediapipe
+scipy
+numpy
+protobuf==3.20.3
+transformers
+sentencepiece
