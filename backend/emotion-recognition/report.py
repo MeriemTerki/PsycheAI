@@ -1,23 +1,15 @@
 import os
-import cv2
 import pandas as pd
-from datetime import datetime
-from fastapi import FastAPI
 from dotenv import load_dotenv
 from pinecone import Pinecone
 from langchain_community.embeddings import CohereEmbeddings
 from groq import AsyncGroq
 from rich.console import Console
-from ultralytics import YOLO
 
 # Load environment variables
 load_dotenv()
 
-# FastAPI app
-app = FastAPI()
-console = Console()
-
-# Constants
+# Settings
 CSV_PATH = "emotion_predictions.csv"
 SYSTEM_PROMPT = """
 You are a psychological data analyst. Your job is to:
@@ -29,58 +21,24 @@ Context (if any):
 {context}
 """
 
-# Init services
+# Init clients
+console = Console()
 groq = AsyncGroq(api_key=os.getenv("GROQ_API_KEY"))
 pc = Pinecone(api_key=os.getenv("PINECONE_API_KEY"))
 index = pc.Index(os.getenv("PINECONE_INDEX_NAME"))
+
+# Init embeddings
 embeddings = CohereEmbeddings(
     cohere_api_key=os.getenv("COHERE_API_KEY"),
     model="embed-english-v2.0",
-    user_agent="emotion-analysis-api"
+    user_agent="emotion-analysis-app"
 )
 
-# Step 1: Run real-time inference and save to CSV
-def run_emotion_inference(duration_sec=10):
-    model = YOLO("models/best_v2.pt")
-    cap = cv2.VideoCapture(0)
-    data = []
-    start_time = datetime.now()
+# Step 1: Load CSV
+def load_emotion_data():
+    return pd.read_csv(CSV_PATH)
 
-    while (datetime.now() - start_time).seconds < duration_sec:
-        ret, frame = cap.read()
-        if not ret:
-            break
-
-        results = model.predict(source=frame, conf=0.5, stream=False, verbose=False)
-        for r in results:
-            if r.boxes is not None:
-                for box in r.boxes:
-                    cls = int(box.cls[0])
-                    conf = float(box.conf[0])
-                    label = model.names[cls]
-                    timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-                    data.append({
-                        "timestamp": timestamp,
-                        "emotion": label,
-                        "confidence": conf
-                    })
-
-        # Optionally show video for debugging
-        # cv2.imshow("Live", frame)
-        # if cv2.waitKey(1) & 0xFF == ord('q'):
-        #     break
-
-    cap.release()
-    cv2.destroyAllWindows()
-
-    if data:
-        df = pd.DataFrame(data)
-        df.to_csv(CSV_PATH, index=False)
-        return df
-    else:
-        raise Exception("No emotion data was captured during inference.")
-
-# Step 2: Summarize CSV
+# Step 2: Summarize the CSV
 def summarize_csv(df):
     summary = f"The dataset contains {len(df)} rows and {len(df.columns)} columns:\n"
     summary += f"Columns: {', '.join(df.columns)}\n\n"
@@ -88,7 +46,7 @@ def summarize_csv(df):
     summary += df.head(5).to_string(index=False)
     return summary
 
-# Step 3: Analyze CSV
+# Step 2.5: Analyze emotion data numerically
 def analyze_emotion_data(df):
     analysis = []
 
@@ -113,7 +71,7 @@ def analyze_emotion_data(df):
 
     return "\n".join(analysis)
 
-# Step 4: Retrieve RAG context
+# Step 3: Retrieve context with RAG
 async def get_rag_context(query: str, top_k: int = 5) -> str:
     try:
         query_embedding = embeddings.embed_query(query)
@@ -126,7 +84,7 @@ async def get_rag_context(query: str, top_k: int = 5) -> str:
         console.print(f"Error retrieving context: {e}", style="red")
         return ""
 
-# Step 5: Ask Groq to interpret
+# Step 4: Get interpretation from Groq
 async def interpret_with_groq(csv_summary: str, stats_summary: str, rag_context: str, model="llama3-8b-8192") -> str:
     try:
         final_prompt = SYSTEM_PROMPT.format(context=rag_context)
@@ -153,21 +111,18 @@ Please provide a psychological interpretation based on this data. Focus on emoti
         console.print(f"Error during Groq call: {e}", style="red")
         return "An error occurred while interpreting the data."
 
-# API Endpoint
-@app.get("/analyze-live-emotion")
-async def analyze_live_emotion():
-    try:
-        df = run_emotion_inference(duration_sec=10)
-        csv_summary = summarize_csv(df)
-        stats_summary = analyze_emotion_data(df)
-        rag_context = await get_rag_context("psychological interpretation of emotion data from facial recognition")
-        interpretation = await interpret_with_groq(csv_summary, stats_summary, rag_context)
+# Main async function
+async def main():
+    df = load_emotion_data()
+    csv_summary = summarize_csv(df)
+    stats_summary = analyze_emotion_data(df)
+    rag_context = await get_rag_context("psychological interpretation of emotion data from facial recognition")
+    interpretation = await interpret_with_groq(csv_summary, stats_summary, rag_context)
+    
+    console.print("🧠 [bold green]Psychological Interpretation:[/bold green]\n")
+    console.print(interpretation, style="cyan")
 
-        return {
-            "summary": csv_summary,
-            "stats": stats_summary,
-            "interpretation": interpretation
-        }
-
-    except Exception as e:
-        return {"error": str(e)}
+# Run the async orchestrator
+if __name__ == "__main__":
+    import asyncio
+    asyncio.run(main())
