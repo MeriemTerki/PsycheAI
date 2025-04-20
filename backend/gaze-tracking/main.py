@@ -37,7 +37,7 @@ async def generate_report():
         # Run the async report script
         result = subprocess.run([sys.executable, "report.py"], capture_output=True, text=True, check=True)
         output = result.stdout.strip()
-        return {"message": "✅ Report generated successfully.", "report": output}
+        return { "report": output}
     except subprocess.CalledProcessError as e:
         return {
             "error": f"❌ Report generation failed.",
