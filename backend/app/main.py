@@ -1,6 +1,5 @@
 import sys
 import os
-
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 import httpx
@@ -10,12 +9,12 @@ from app.utils import diagnose_and_treat
 from groq import Groq
 from rich.console import Console
 
-# 👇 Fix path so we can import from voiceAgent
+# Fix path so we can import from voiceAgent
 voice_agent_path = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'voiceAgent'))
 if voice_agent_path not in sys.path:
     sys.path.append(voice_agent_path)
 
-# 👇 Now we can import from voiceAgent.app
+# Now we can import from voiceAgent.app
 from voiceAgent.app.rag_assistant import transcribe_audio, text_to_speech, SYSTEM_PROMPT, should_end_conversation
 from voiceAgent.app.config import settings
 
@@ -39,16 +38,16 @@ TRANSCRIPT_UPLOAD_URL = "http://127.0.0.1:8002/upload_transcript"
 groq_client = Groq(api_key=os.getenv("GROQ_API_KEY"))
 console = Console()
 
-# Voice Interaction
 async def run_voice_session() -> List[str]:
     system_message = {'role': 'system', 'content': SYSTEM_PROMPT}
     messages = [system_message]
     memory_size = 10
     transcript_log = []
+    conversation_active = True
 
     console.print("[bold green]🎤 Starting voice session...[/bold green]")
 
-    for _ in range(3):
+    while conversation_active:
         user_msg = await transcribe_audio()
         if not user_msg:
             continue
@@ -60,7 +59,8 @@ async def run_voice_session() -> List[str]:
             goodbye = "Goodbye! Take care."
             text_to_speech(goodbye)
             transcript_log.append(f"Assistant: {goodbye}")
-            break
+            conversation_active = False
+            continue
 
         if len(messages) > memory_size:
             messages = [system_message] + messages[-(memory_size - 1):]
@@ -87,11 +87,9 @@ async def run_voice_session() -> List[str]:
 
     return transcript_log
 
-
 @app.get("/")
 async def root():
     return {"message": "Unified Mental Health Inference API"}
-
 
 @app.get("/diagnosis-treatment")
 async def diagnosis_and_treatment():
@@ -127,7 +125,7 @@ async def diagnosis_and_treatment():
 
             emotion_data = emotion_response.json()
 
-            # ✅ Defensive casting
+            # Defensive casting
             emotion_report = {
                 "summary": emotion_data.get("summary", ""),
                 "stats": emotion_data.get("stats", ""),
@@ -140,7 +138,7 @@ async def diagnosis_and_treatment():
 
             conversation_transcript = "\n".join(voice_transcript)
 
-            # ✅ Call utility
+            # Call utility
             result = await diagnose_and_treat(
                 emotion_report=emotion_report,
                 eye_tracking_report=eye_tracking_report,

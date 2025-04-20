@@ -52,7 +52,7 @@ async def diagnose_and_treat(
         return "groq_client is not provided."
 
     try:
-        # ✅ Debug
+        # Debug
         print("DIAGNOSE INPUT TYPES:", type(emotion_report), type(eye_tracking_report), type(conversation_transcript))
 
         # Format inputs
@@ -73,7 +73,6 @@ async def diagnose_and_treat(
             {"role": "user", "content": user_data}
         ]
 
-        # ✅ FIXED: Remove `await` before .create()
         res = groq_client.chat.completions.create(
             messages=messages,
             model=model,

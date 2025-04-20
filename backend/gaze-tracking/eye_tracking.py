@@ -10,7 +10,7 @@ import argparse
 
 # Parse duration argument
 parser = argparse.ArgumentParser()
-parser.add_argument('--duration', type=int, default=30, help='Duration of eye tracking in seconds')
+parser.add_argument('--duration', type=int, default=300, help='Duration of eye tracking in seconds')
 args = parser.parse_args()
 capture_duration = args.duration
 
