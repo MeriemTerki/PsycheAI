@@ -180,6 +180,6 @@ opencv-python
 mediapipe
 scipy
 numpy
-protobuf==3.20.3
+protobuf>=4.25.3,<5  # Changed to be compatible with mediapipe
 transformers
 sentencepiece

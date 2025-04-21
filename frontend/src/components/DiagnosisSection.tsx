@@ -1,11 +1,9 @@
-
 import { useState, useRef, useEffect } from "react";
-import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
-import { ScrollArea } from "@/components/ui/scroll-area";
-import { Mic, MicOff, Save, Video } from "lucide-react";
-import { Separator } from "@/components/ui/separator";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import VideoPreview from "./diagnosis/VideoPreview";
+import ConversationDisplay from "./diagnosis/ConversationDisplay";
+import SessionControls from "./diagnosis/SessionControls";
+import DiagnosisResults from "./DiagnosisResults";
 
 interface Message {
   sender: 'ai' | 'user';
@@ -23,7 +21,6 @@ const DiagnosisSection = () => {
   const streamRef = useRef<MediaStream | null>(null);
   const conversationRef = useRef<HTMLDivElement>(null);
 
-  // Demo AI questions - in a real app, these would come from an API
   const demoQuestions = [
     "How would you describe your mood today?",
     "Have you experienced any changes in your sleep pattern recently?",
@@ -35,58 +32,51 @@ const DiagnosisSection = () => {
     "Do you find yourself avoiding certain situations due to anxiety or discomfort?"
   ];
 
-  useEffect(() => {
-    // Auto-scroll to bottom of conversation
+  const scrollToBottom = () => {
     if (conversationRef.current) {
       conversationRef.current.scrollTop = conversationRef.current.scrollHeight;
     }
+  };
+
+  useEffect(() => {
+    scrollToBottom();
   }, [conversation]);
 
   const startSession = async () => {
     try {
-      // Get user media (webcam and audio)
       const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
       streamRef.current = stream;
       
-      // Display webcam feed
       if (webcamRef.current) {
         webcamRef.current.srcObject = stream;
       }
       
-      // Setup media recorder (would record to server in production)
       mediaRecorderRef.current = new MediaRecorder(stream);
       
-      // Start recording
       mediaRecorderRef.current.start();
       setIsRecording(true);
       setSessionEnded(false);
       
-      // Initial AI message
       const initialMessage = "Hello, I'm your AI psychological assessment assistant. I'll be asking you some questions to help evaluate your mental wellbeing. Please answer honestly, and remember that this is just a preliminary assessment tool, not a clinical diagnosis.";
       setConversation([{ sender: 'ai', text: initialMessage, timestamp: new Date() }]);
       
-      // Ask first question after 2 seconds
       setTimeout(() => {
         const firstQuestion = demoQuestions[0];
         setCurrentQuestion(firstQuestion);
         setConversation(prev => [...prev, { sender: 'ai', text: firstQuestion, timestamp: new Date() }]);
         
-        // Simulate user responses for demo purposes
         simulateUserResponses();
       }, 2000);
-      
     } catch (err) {
       console.error("Error accessing media devices:", err);
     }
   };
   
   const endSession = () => {
-    // Stop media recorder
     if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
       mediaRecorderRef.current.stop();
     }
     
-    // Stop all tracks in the stream
     if (streamRef.current) {
       streamRef.current.getTracks().forEach(track => track.stop());
     }
@@ -95,13 +85,11 @@ const DiagnosisSection = () => {
     setSessionEnded(true);
     setCurrentQuestion("");
     
-    // Final AI message
     const finalMessage = "Thank you for completing this assessment session. You can now review the full conversation transcript below. Remember, this is not a clinical diagnosis, but it may provide useful insights to discuss with a healthcare professional.";
     setConversation(prev => [...prev, { sender: 'ai', text: finalMessage, timestamp: new Date() }]);
   };
   
   const saveTranscript = () => {
-    // In a real app, this would save to a database or download as file
     const transcript = conversation.map(msg => 
       `[${msg.timestamp.toLocaleTimeString()}] ${msg.sender === 'ai' ? 'AI' : 'You'}: ${msg.text}`
     ).join('\n\n');
@@ -117,8 +105,6 @@ const DiagnosisSection = () => {
     URL.revokeObjectURL(url);
   };
   
-  // This function simulates user responses for demo purposes
-  // In a real app, these would come from actual user voice input
   const simulateUserResponses = () => {
     const demoResponses = [
       "I've been feeling a bit down lately, but I had a good day yesterday.",
@@ -135,12 +121,10 @@ const DiagnosisSection = () => {
     
     const askNextQuestion = () => {
       if (questionIndex < demoQuestions.length - 1) {
-        // Add user response to previous question
         setTimeout(() => {
           const userResponse = demoResponses[questionIndex];
           setConversation(prev => [...prev, { sender: 'user', text: userResponse, timestamp: new Date() }]);
           
-          // Ask next question after user response
           setTimeout(() => {
             questionIndex++;
             const nextQuestion = demoQuestions[questionIndex];
@@ -150,12 +134,10 @@ const DiagnosisSection = () => {
           }, 3000);
         }, 3000);
       } else {
-        // Final user response
         setTimeout(() => {
           const userResponse = demoResponses[questionIndex];
           setConversation(prev => [...prev, { sender: 'user', text: userResponse, timestamp: new Date() }]);
           
-          // End session after final response
           setTimeout(() => {
             endSession();
           }, 3000);
@@ -167,7 +149,7 @@ const DiagnosisSection = () => {
   };
 
   return (
-    <section id="diagnosis" className="py-24 bg-gradient-to-b from-white to-psyche-gray-light min-h-screen">
+    <section id="diagnosis" className="py-24 bg-gradient-to-b from-white to-psyche-gray-light">
       <div className="container mx-auto px-4">
         <div className="text-center mb-16">
           <h2 className="text-3xl font-bold mb-4">
@@ -179,175 +161,71 @@ const DiagnosisSection = () => {
         </div>
 
         <div className="grid grid-cols-1 lg:grid-cols-5 gap-8">
-          {/* Webcam Feed */}
-          <div className="lg:col-span-2">
-            <Card className="overflow-hidden">
-              <CardContent className="p-0 relative">
-                <div className="aspect-video bg-black relative">
-                  {!isRecording && !sessionEnded ? (
-                    <div className="absolute inset-0 flex items-center justify-center flex-col text-white">
-                      <div className="w-20 h-20 rounded-full bg-psyche-purple/20 flex items-center justify-center mb-4">
-                        <Video className="w-8 h-8 text-psyche-purple" />
-                      </div>
-                      <p className="text-gray-300">Camera will activate when session starts</p>
-                    </div>
-                  ) : null}
-                  <video 
-                    ref={webcamRef} 
-                    autoPlay 
-                    playsInline 
-                    muted 
-                    className={`w-full h-full object-cover ${isRecording ? 'block' : 'hidden'}`}
-                  />
-                  {sessionEnded ? (
-                    <div className="absolute inset-0 flex items-center justify-center flex-col bg-black/80 text-white">
-                      <p className="text-xl font-medium mb-2">Session Complete</p>
-                      <p className="text-gray-300">Video recording has ended</p>
-                    </div>
-                  ) : null}
-                  {isRecording ? (
-                    <div className="absolute top-4 right-4 flex items-center gap-2 bg-red-500/80 px-3 py-1 rounded-full text-white text-sm">
-                      <div className="w-2 h-2 bg-white rounded-full animate-recording-pulse"></div>
-                      Recording
-                    </div>
-                  ) : null}
-                </div>
-                {isRecording && currentQuestion ? (
+          {/* Video Preview Column */}
+          <div className="lg:col-span-2 flex flex-col">
+            <Card className="flex-1">
+              <CardContent className="p-0 relative h-full flex flex-col">
+                <VideoPreview 
+                  isRecording={isRecording}
+                  sessionEnded={sessionEnded}
+                  webcamRef={webcamRef}
+                />
+                {isRecording && currentQuestion && (
                   <div className="p-4 bg-psyche-purple-light border-t border-psyche-purple/20">
                     <p className="font-medium text-psyche-purple">Current Question:</p>
                     <p className="text-gray-800">{currentQuestion}</p>
                   </div>
-                ) : null}
+                )}
               </CardContent>
             </Card>
 
-            <div className="mt-6 flex flex-col gap-4">
-              {!isRecording ? (
-                <Button 
-                  disabled={sessionEnded}
-                  size="lg" 
-                  onClick={startSession}
-                  className="bg-psyche-purple hover:bg-psyche-purple-dark text-white transition-colors"
-                >
-                  <Mic className="mr-2 h-5 w-5" />
-                  Start Diagnosis Session
-                </Button>
-              ) : (
-                <Button 
-                  size="lg" 
-                  variant="destructive" 
-                  onClick={endSession}
-                >
-                  <MicOff className="mr-2 h-5 w-5" />
-                  End Session
-                </Button>
-              )}
-              
-              {sessionEnded && (
-                <Button 
-                  variant="outline" 
-                  size="lg"
-                  onClick={saveTranscript}
-                  className="border-psyche-purple text-psyche-purple hover:bg-psyche-purple-light"
-                >
-                  <Save className="mr-2 h-5 w-5" />
-                  Save Transcript
-                </Button>
-              )}
-
-              {sessionEnded && (
-                <Dialog>
-                  <DialogTrigger asChild>
-                    <Button 
-                      variant="outline" 
-                      size="lg"
-                      className="border-psyche-blue text-psyche-blue hover:bg-psyche-blue-light"
-                    >
-                      View Full Transcript
-                    </Button>
-                  </DialogTrigger>
-                  <DialogContent className="max-w-3xl max-h-[80vh] overflow-hidden flex flex-col">
-                    <DialogHeader>
-                      <DialogTitle>Session Transcript</DialogTitle>
-                    </DialogHeader>
-                    <ScrollArea className="flex-1 mt-4 pr-4">
-                      <div className="space-y-4">
-                        {conversation.map((message, index) => (
-                          <div key={index} className={`flex ${message.sender === 'ai' ? 'justify-start' : 'justify-end'}`}>
-                            <div className={`max-w-[80%] p-4 rounded-xl ${
-                              message.sender === 'ai' 
-                                ? 'bg-psyche-purple-light text-gray-800' 
-                                : 'bg-psyche-blue-light text-gray-800'
-                            }`}>
-                              <p className="text-sm font-medium mb-1">{message.sender === 'ai' ? 'AI' : 'You'}</p>
-                              <p>{message.text}</p>
-                              <p className="text-xs text-gray-500 mt-2">
-                                {message.timestamp.toLocaleTimeString()}
-                              </p>
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-                    </ScrollArea>
-                  </DialogContent>
-                </Dialog>
-              )}
-            </div>
+            <SessionControls 
+              isRecording={isRecording}
+              sessionEnded={sessionEnded}
+              onStartSession={startSession}
+              onEndSession={endSession}
+            />
           </div>
 
-          {/* Conversation Area */}
-          <div className="lg:col-span-3">
-            <Card className="h-full flex flex-col">
-              <CardContent className="p-4 flex-1 overflow-hidden">
-                <div className="flex flex-col h-full">
-                  <div className="mb-4 flex items-center justify-between">
-                    <h3 className="text-xl font-medium">Live Conversation</h3>
-                    <div className={`px-3 py-1 rounded-full text-xs ${
-                      isRecording 
-                        ? 'bg-green-100 text-green-800' 
-                        : sessionEnded
-                          ? 'bg-gray-100 text-gray-800'
-                          : 'bg-yellow-100 text-yellow-800'
-                    }`}>
-                      {isRecording ? 'Active Session' : sessionEnded ? 'Session Complete' : 'Ready to Begin'}
-                    </div>
-                  </div>
-                  
-                  <ScrollArea className="flex-1" ref={conversationRef}>
-                    {conversation.length === 0 ? (
-                      <div className="h-full flex items-center justify-center">
-                        <div className="text-center p-8">
-                          <div className="w-16 h-16 rounded-full bg-psyche-gray-light mx-auto flex items-center justify-center mb-4">
-                            <Mic className="w-6 h-6 text-psyche-purple" />
-                          </div>
-                          <h3 className="text-lg font-medium mb-2">No Active Session</h3>
-                          <p className="text-gray-600">Click the "Start Diagnosis Session" button to begin</p>
-                        </div>
-                      </div>
-                    ) : (
-                      <div className="space-y-4 p-2">
-                        {conversation.map((message, index) => (
-                          <div key={index} className={`flex ${message.sender === 'ai' ? 'justify-start' : 'justify-end'}`}>
-                            <div className={`max-w-[80%] p-4 rounded-xl animate-fade-in ${
-                              message.sender === 'ai' 
-                                ? 'bg-psyche-purple-light text-gray-800' 
-                                : 'bg-psyche-blue-light text-gray-800'
-                            }`} style={{ animationDelay: `${index * 100}ms` }}>
-                              <p className="text-sm font-medium mb-1">{message.sender === 'ai' ? 'AI' : 'You'}</p>
-                              <p>{message.text}</p>
-                              <p className="text-xs text-gray-500 mt-2">
-                                {message.timestamp.toLocaleTimeString()}
-                              </p>
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-                    )}
-                  </ScrollArea>
+          {/* Conversation Column */}
+          <div className="lg:col-span-3 flex flex-col">
+            <div className="flex flex-col h-[500px] mb-4">
+              <div className="mb-4 flex items-center justify-between">
+                <h3 className="text-xl font-medium">Live Conversation</h3>
+                <div className={`px-3 py-1 rounded-full text-xs ${
+                  isRecording 
+                    ? 'bg-green-100 text-green-800' 
+                    : sessionEnded
+                      ? 'bg-gray-100 text-gray-800'
+                      : 'bg-yellow-100 text-yellow-800'
+                }`}>
+                  {isRecording ? 'Active Session' : sessionEnded ? 'Session Complete' : 'Ready to Begin'}
                 </div>
-              </CardContent>
-            </Card>
+              </div>
+
+              <Card className="flex-1 min-h-0">
+                <CardContent className="p-0 h-full">
+                  <ConversationDisplay 
+                    conversation={conversation}
+                    conversationRef={conversationRef}
+                    isRecording={isRecording}
+                  />
+                </CardContent>
+              </Card>
+            </div>
+
+            
           </div>
+          {sessionEnded && (
+  <div className="lg:col-span-5 w-full flex justify-center">
+    <div className="w-full max-w-4xl">
+      <DiagnosisResults 
+        isVisible={sessionEnded} 
+        conversation={conversation}
+      />
+    </div>
+  </div>
+)}
         </div>
       </div>
     </section>
