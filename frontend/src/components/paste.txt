@@ -1,0 +1,1614 @@
+app/main.py
+import os
+import asyncio
+import httpx
+from fastapi import FastAPI, HTTPException
+from fastapi.middleware.cors import CORSMiddleware
+from pydantic import BaseModel
+from groq import Groq
+from rich.console import Console
+from datetime import datetime
+from typing import Dict, Any, List
+from dotenv import load_dotenv
+import time
+
+load_dotenv()
+
+app = FastAPI()
+console = Console()
+
+# CORS configuration
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["http://localhost:8080", "http://localhost:3000", "*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+# API Endpoints for external services
+GAZE_CAPTURE_URL = "http://127.0.0.1:8001/capture-eye-tracking"
+GAZE_REPORT_URL = "http://127.0.0.1:8001/generate-eye-tracking-report"
+EMOTION_API_URL = "http://127.0.0.1:8000/analyze-live-emotion"
+CHAT_API_URL = "http://127.0.0.1:8002/chat"
+TRANSCRIPT_GET_URL = "http://127.0.0.1:8002/transcript"
+
+# Initialize Groq client
+groq_client = Groq(api_key=os.getenv("GROQ_API_KEY"))
+
+# Pydantic model for session request
+class SessionRequest(BaseModel):
+    messages: List[Dict[str, str]] = []
+    is_post_session: bool = False
+
+# System prompt for generating the final report
+REPORT_SYSTEM_PROMPT = """
+You are a psychological data analyst tasked with generating a comprehensive mental health assessment report. Your role is to:
+1. Analyze data from gaze tracking, emotion recognition, and voice conversation transcripts.
+2. Provide a concise, evidence-based interpretation of emotional stability, cognitive patterns, and behavioral implications.
+3. Suggest treatment approaches based on the analysis.
+4. Be professional, empathetic, and avoid clinical diagnoses.
+5. Structure the output as:
+   - Summary: Key findings from each data source.
+   - Interpretation: Psychological insights and patterns.
+   - Recommended Treatment: Practical suggestions for mental health support.
+"""
+
+async def generate_final_report(
+    gaze_report: str,
+    emotion_data: Dict[str, Any],
+    transcript: str
+) -> Dict[str, str]:
+    session_id = datetime.now().strftime("%Y%m%d%H%M%S")
+    max_retries = 3
+    retry_delay = 60  # seconds
+
+    for attempt in range(max_retries):
+        try:
+            console.print(f"[{session_id}] Generating final report (attempt {attempt + 1})...", style="cyan")
+            prompt = f"""
+{REPORT_SYSTEM_PROMPT}
+
+**Input Data:**
+- **Gaze Tracking Report**: {gaze_report}
+- **Emotion Recognition Data**:
+  - Summary: {emotion_data.get('summary', '')}
+  - Statistics: {emotion_data.get('stats', '')}
+  - Interpretation: {emotion_data.get('interpretation', '')}
+- **Conversation Transcript**: {transcript}
+
+Please provide a structured report with Summary, Interpretation, and Recommended Treatment.
+"""
+            response = groq_client.chat.completions.create(
+                messages=[
+                    {"role": "system", "content": REPORT_SYSTEM_PROMPT},
+                    {"role": "user", "content": prompt}
+                ],
+                model="llama3-8b-8192",
+                temperature=0.7,
+                max_tokens=1000
+            )
+            console.print(f"[{session_id}] Final report generated", style="green")
+            return {
+                "report": response.choices[0].message.content,
+                "timestamp": datetime.now().isoformat()
+            }
+        except Exception as e:
+            if "rate_limit_exceeded" in str(e) and attempt < max_retries - 1:
+                console.print(f"[{session_id}] Rate limit exceeded, retrying in {retry_delay}s...", style="yellow")
+                time.sleep(retry_delay)
+                retry_delay *= 2  # Exponential backoff
+            else:
+                console.print(f"[{session_id}] Error generating report: {e}", style="red")
+                return {"report": f"Error: {str(e)}", "timestamp": datetime.now().isoformat()}
+
+async def run_session(messages: List[Dict[str, str]], is_post_session: bool) -> Dict[str, Any]:
+    session_id = datetime.now().strftime("%Y%m%d%H%M%S")
+    console.print(f"[bold cyan][{session_id}] Starting mental health session...[/bold cyan]")
+
+    async with httpx.AsyncClient(timeout=120.0) as client:
+        try:
+            # Gaze tracking (skip if post-session)
+            gaze_data = {"error": "Skipped for post-session"} if is_post_session else {}
+            if not is_post_session:
+                try:
+                    console.print(f"[{session_id}] Calling gaze tracking...", style="cyan")
+                    gaze_response = await client.post(GAZE_CAPTURE_URL, json={"frame": "", "session_id": session_id})
+                    if gaze_response.status_code == 200:
+                        gaze_data = gaze_response.json()
+                        console.print(f"[{session_id}] Fetching gaze report...", style="cyan")
+                        gaze_report_response = await client.get(GAZE_REPORT_URL)
+                        if gaze_report_response.status_code == 200:
+                            gaze_data["report"] = gaze_report_response.json().get("report", "")
+                        else:
+                            gaze_data["report"] = f"Failed to fetch report: {gaze_report_response.status_code}"
+                    else:
+                        gaze_data = {"error": f"Status {gaze_response.status_code}: {gaze_response.text}"}
+                except Exception as e:
+                    console.print(f"[{session_id}] Gaze tracking failed: {e}", style="red")
+                    gaze_data = {"error": str(e)}
+                console.print(f"[{session_id}] Gaze tracking result: {gaze_data}", style="green")
+
+            # Emotion recognition (skip if post-session)
+            emotion_data = {"error": "Skipped for post-session"} if is_post_session else {}
+            if not is_post_session:
+                try:
+                    console.print(f"[{session_id}] Calling emotion recognition...", style="cyan")
+                    emotion_response = await client.post(EMOTION_API_URL, json={"frame": "", "session_id": session_id})
+                    if emotion_response.status_code == 200:
+                        emotion_data = emotion_response.json()
+                    else:
+                        emotion_data = {"error": f"Status {emotion_response.status_code}: {emotion_response.text}"}
+                except Exception as e:
+                    console.print(f"[{session_id}] Emotion recognition failed: {e}", style="red")
+                    emotion_data = {"error": str(e)}
+                console.print(f"[{session_id}] Emotion recognition result: {emotion_data}", style="green")
+
+            # Chat API
+            chat_data = {}
+            try:
+                console.print(f"[{session_id}] Calling chat API...", style="cyan")
+                chat_response = await client.post(CHAT_API_URL, json={"messages": messages})
+                if chat_response.status_code == 200:
+                    chat_data = chat_response.json()
+                else:
+                    chat_data = {"error": f"Status {chat_response.status_code}: {chat_response.text}"}
+            except Exception as e:
+                console.print(f"[{session_id}] Chat API failed: {e}", style="red")
+                chat_data = {"error": str(e)}
+            console.print(f"[{session_id}] Chat API result: {chat_data}", style="green")
+
+            # Fetch transcript
+            transcript = ""
+            try:
+                console.print(f"[{session_id}] Fetching transcript...", style="cyan")
+                transcript_response = await client.get(TRANSCRIPT_GET_URL)
+                if transcript_response.status_code == 200:
+                    transcript = transcript_response.json().get("transcript", "")
+                else:
+                    console.print(f"[{session_id}] Transcript fetch failed: {transcript_response.status_code} - {transcript_response.text}", style="red")
+                    transcript = "No transcript available"
+            except Exception as e:
+                console.print(f"[{session_id}] Transcript fetch error: {e}", style="red")
+                transcript = f"Error fetching transcript: {str(e)}"
+            console.print(f"[{session_id}] Transcript fetched: {transcript[:100]}...", style="green")
+
+            # Generate final report
+            console.print(f"[{session_id}] Generating final report...", style="cyan")
+            final_report = await generate_final_report(
+                gaze_report=gaze_data.get("report", ""),
+                emotion_data=emotion_data,
+                transcript=transcript
+            )
+
+            console.print(f"[{session_id}] Session completed successfully", style="green")
+            return {
+                "session_id": session_id,
+                "gaze_tracking": gaze_data,
+                "emotion_recognition": emotion_data,
+                "voice_chat": chat_data,
+                "transcript": transcript,
+                "final_report": final_report
+            }
+
+        except Exception as e:
+            console.print(f"[{session_id}] Session error: {e}", style="red")
+            raise HTTPException(status_code=500, detail=f"Session failed: {str(e)}")
+
+@app.post("/start-session")
+async def start_session(request: SessionRequest):
+    console.print("Received /start-session request", style="bold yellow")
+    try:
+        result = await run_session(request.messages, request.is_post_session)
+        console.print("Completed /start-session request", style="green")
+        return result
+    except Exception as e:
+        console.print(f"Error in /start-session: {e}", style="red")
+        raise HTTPException(status_code=500, detail=f"Start session failed: {str(e)}")
+
+@app.get("/")
+async def root():
+    return {"message": "Unified Mental Health Assessment API"}
+
+if __name__ == "__main__":
+    import uvicorn
+    uvicorn.run("app.main:app", host="0.0.0.0", port=8003, reload=True)
+
+voiceAgent/rag_assistant.py
+import re
+import string
+import asyncio
+import requests
+import wave
+import io
+import pyaudio
+from groq import AsyncGroq
+from deepgram import (
+    DeepgramClient, DeepgramClientOptions, LiveTranscriptionEvents, LiveOptions, Microphone
+)
+from rich.console import Console
+from .config import settings
+from pinecone import Pinecone, ServerlessSpec
+from langchain_community.embeddings import CohereEmbeddings
+import os
+from dotenv import load_dotenv
+from datetime import datetime
+
+# Load environment variables from .env file
+load_dotenv()
+
+SYSTEM_PROMPT = """You are a compassionate, professional mental health assistant. Your role is to:
+1. **Listen actively** and respond with empathy, warmth, and non-judgmental support.
+2. **Use the provided context** (therapy Q&A, techniques, or resources) to offer accurate, evidence-based guidance.
+3. **Prioritize safety**: Never diagnose or replace human therapists. For crises (self-harm, abuse), say:
+   "I’m deeply concerned. Please contact [crisis hotline] or your therapist immediately."
+4. **Keep responses concise** (1-2 sentences max) for voice interactions, but adjust for complex topics.
+5. **Encourage professional help**: 
+   "That sounds really challenging. A therapist could help you explore this further."
+
+Example tone:
+- "I hear how painful this feels. Many people find mindfulness helpful—would you like a short exercise?"
+- "It’s brave of you to share this. The resources I have suggest [context tip]."
+
+Context to use (if available):
+{context}
+"""
+
+# Improved TTS parameters for clearer speech
+DEEPGRAM_TTS_URL = 'https://api.deepgram.com/v1/speak?model=aura-asteria-en&encoding=linear16&sample_rate=24000'
+
+console = Console()
+groq = AsyncGroq(api_key=settings.GROQ_API_KEY)
+
+# Initialize Pinecone
+pc = Pinecone(api_key=os.getenv("PINECONE_API_KEY"))
+index_name = "ai-agent"  # Replace with your index name
+
+# Initialize Cohere embeddings
+embeddings = CohereEmbeddings(
+    cohere_api_key=os.getenv("COHERE_API_KEY"),
+    model="embed-english-v2.0",
+    user_agent="ai-agent"
+)
+
+# Create the Deepgram client with proper configuration
+deepgram_config = DeepgramClientOptions(
+    options={
+        'keepalive': 'true',
+        'timeout': '5000'
+    }
+)
+deepgram = DeepgramClient(settings.DEEPGRAM_API_KEY, config=deepgram_config)
+
+# Configure Deepgram options for live transcription
+dg_connection_options = LiveOptions(
+    model='nova-2',
+    language='en-US',
+    smart_format=True,
+    encoding='linear16',
+    channels=1,
+    sample_rate=16000,
+    interim_results=True,
+    utterance_end_ms='1500',
+    vad_events=True,
+    endpointing=500,
+)
+
+async def get_relevant_context(query: str, top_k: int = 3) -> str:
+    """
+    Retrieve relevant context from Pinecone based on the user query using Cohere embeddings.
+    """
+    try:
+        # Generate embedding for the query using Cohere
+        query_embedding = embeddings.embed_query(query)
+        
+        # Query Pinecone index
+        index = pc.Index(index_name)
+        results = index.query(
+            vector=query_embedding,
+            top_k=top_k,
+            include_metadata=True
+        )
+        
+        # Extract and format the context
+        context = ""
+        for match in results.matches:
+            context += f"{match.metadata.get('text', '')}\n"
+        
+        return context.strip()
+    
+    except Exception as e:
+        console.print(f"Error retrieving context: {e}", style="red")
+        return ""
+
+async def assistant_chat(messages, model='llama3-8b-8192', min_duration=3):
+    try:
+        start_time = datetime.now()
+        # Check if the last message is a user query that might need RAG
+        user_query = messages[-1]['content'] if messages[-1]['role'] == 'user' else ""
+        
+        # Only use RAG for substantive questions (not greetings, etc.)
+        if (len(user_query.split()) > 3 and 
+            not any(word in user_query.lower() for word in ['hi', 'hello', 'hey', 'bye', 'thanks'])):
+            
+            context = await get_relevant_context(user_query)
+            if context:
+                # Add context to the system prompt for this query
+                rag_system_prompt = SYSTEM_PROMPT + f"\n\nUse this context to answer the question:\n{context}"
+                messages_with_context = [
+                    {'role': 'system', 'content': rag_system_prompt},
+                    *messages[1:]  # Skip the original system prompt
+                ]
+                
+                res = await groq.chat.completions.create(
+                    messages=messages_with_context,
+                    model=model,
+                    temperature=0.7,
+                    max_tokens=150
+                )
+                response = res.choices[0].message.content
+            else:
+                # Default response without RAG if context is empty
+                res = await groq.chat.completions.create(
+                    messages=messages,
+                    model=model,
+                    temperature=0.7,
+                    max_tokens=150
+                )
+                response = res.choices[0].message.content
+        else:
+            # Default response without RAG
+            res = await groq.chat.completions.create(
+                messages=messages,
+                model=model,
+                temperature=0.7,
+                max_tokens=150
+            )
+            response = res.choices[0].message.content
+        
+        # Ensure minimum duration
+        elapsed = (datetime.now() - start_time).total_seconds()
+        if elapsed < min_duration:
+            await asyncio.sleep(min_duration - elapsed)
+        
+        console.print(f"[{datetime.now().isoformat()}] Assistant chat completed in {elapsed:.2f} seconds", style="green")
+        return response
+    
+    except Exception as e:
+        console.print(f"[{datetime.now().isoformat()}] Error in assistant_chat: {e}", style="red")
+        return "Sorry, I encountered an error. Could you please repeat that?"
+
+async def transcribe_audio():
+    transcript_parts = []
+    full_transcript = ''
+    transcription_complete = asyncio.Event()
+    
+    try:
+        dg_connection = deepgram.listen.asynclive.v('1')
+
+        async def on_message(self, result, **kwargs):
+            nonlocal transcript_parts, full_transcript
+            sentence = result.channel.alternatives[0].transcript
+            if len(sentence) == 0:
+                return
+            if result.is_final:
+                transcript_parts.append(sentence)
+                console.print(sentence, style='cyan')
+                if result.speech_final:
+                    full_transcript = ' '.join(transcript_parts)
+                    transcription_complete.set()
+            else:
+                console.print(sentence, style='cyan', end='\r')
+        
+        async def on_utterance_end(self, utterance_end, **kwargs):
+            nonlocal transcript_parts, full_transcript
+            if len(transcript_parts) > 0:
+                full_transcript = ' '.join(transcript_parts)
+                transcription_complete.set()
+        
+        async def on_error(self, error, **kwargs):
+            console.print(f'Error: {error}', style='red')
+            transcription_complete.set()  # Ensure we don't hang on error
+        
+        dg_connection.on(LiveTranscriptionEvents.Transcript, on_message)
+        dg_connection.on(LiveTranscriptionEvents.UtteranceEnd, on_utterance_end)
+        dg_connection.on(LiveTranscriptionEvents.Error, on_error)
+
+        if await dg_connection.start(dg_connection_options) is False:
+            console.print('Failed to connect to Deepgram')
+            return None
+        
+        microphone = Microphone(dg_connection.send)
+        microphone.start()
+        console.print('\nListening...\n')
+
+        await transcription_complete.wait()
+        
+        microphone.finish()
+        await dg_connection.finish()
+        
+        if not full_transcript:
+            return None
+        return full_transcript.strip()
+    
+    except Exception as e:
+        console.print(f'Could not open socket: {e}')
+        return None
+
+def should_end_conversation(text):
+    if not text:
+        return False
+    text = text.translate(str.maketrans('', '', string.punctuation))
+    text = text.strip().lower()
+    return any(phrase in text for phrase in ["goodbye", "end", "stop"])
+
+def text_to_speech(text):
+    try:
+        headers = {
+            'Authorization': f'Token {settings.DEEPGRAM_API_KEY}',
+            'Content-Type': 'application/json'
+        }
+
+        formatted_text = text.replace('.', '. ').replace('?', '? ').replace('!', '! ')
+
+        res = requests.post(
+            DEEPGRAM_TTS_URL,
+            headers=headers,
+            json={'text': formatted_text},
+            stream=True,
+            timeout=15
+        )
+
+        if res.status_code != 200:
+            console.print(f"TTS API error: {res.status_code} - {res.text}", style="red")
+            return
+
+        audio_buffer = io.BytesIO(res.content)
+
+        with wave.open(audio_buffer, 'rb') as wf:
+            p = pyaudio.PyAudio()
+
+            try:
+                stream = p.open(
+                    format=p.get_format_from_width(wf.getsampwidth()),
+                    channels=wf.getnchannels(),
+                    rate=wf.getframerate(),
+                    output=True
+                )
+
+                data = wf.readframes(4096)
+                while data:
+                    stream.write(data)
+                    data = wf.readframes(4096)
+
+                stream.stop_stream()
+                stream.close()
+            except Exception as e:
+                console.print(f"Audio playback error: {e}", style="red")
+            finally:
+                p.terminate()
+
+    except Exception as e:
+        console.print(f"Error in text_to_speech: {e}", style="red")
+
+async def run():
+    system_message = {'role': 'system', 'content': SYSTEM_PROMPT}
+    memory_size = 10
+    messages = [system_message]
+    
+    console.print("\n[bold green]Voice Assistant Ready![/bold green]\n")
+    
+    while True:
+        try:
+            user_message = await transcribe_audio()
+            if not user_message:
+                console.print("Couldn't understand that. Please try again.", style="yellow")
+                continue
+                
+            messages.append({'role': 'user', 'content': user_message})
+
+            if should_end_conversation(user_message):
+                goodbye_msg = "Goodbye! Have a great day!"
+                console.print(goodbye_msg, style="dark_orange")
+                text_to_speech(goodbye_msg)
+                break
+
+            if len(messages) > memory_size:
+                messages = [system_message] + messages[-(memory_size-1):]
+
+            assistant_message = await assistant_chat(messages)
+            messages.append({'role': 'assistant', 'content': assistant_message})
+            console.print(f"Assistant: {assistant_message}", style="dark_orange")
+            text_to_speech(assistant_message)
+            
+        except KeyboardInterrupt:
+            console.print("\nExiting...", style="red")
+            break
+        except Exception as e:
+            console.print(f"Unexpected error: {e}", style="red")
+            continue
+
+def main():
+    try:
+        asyncio.run(run())
+    except KeyboardInterrupt:
+        console.print("\nVoice assistant stopped.", style="red")
+
+if __name__ == "__main__":
+    main()
+
+voiceAgent/main.py
+from fastapi import FastAPI, HTTPException
+from fastapi.middleware.cors import CORSMiddleware
+from pydantic import BaseModel
+from typing import List, Dict
+from app.rag_assistant import assistant_chat
+from rich.console import Console
+import os
+
+app = FastAPI()
+console = Console()
+
+# Add CORS middleware
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["http://localhost:8080", "http://localhost:3000", "*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+class ChatRequest(BaseModel):
+    messages: List[Dict[str, str]]
+
+class TranscriptRequest(BaseModel):
+    transcript: str
+
+# In-memory transcript storage (replace with database in production)
+transcript_storage = ""
+
+@app.post("/chat")
+async def chat(request: ChatRequest):
+    try:
+        console.print("Received /chat request", style="bold yellow")
+        reply = await assistant_chat(request.messages)
+        console.print(f"Chat response: {reply}", style="green")
+        return {"reply": reply}
+    except Exception as e:
+        console.print(f"Error in /chat: {e}", style="red")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/upload_transcript")
+async def upload_transcript(request: TranscriptRequest):
+    try:
+        console.print("Received /upload_transcript request", style="bold yellow")
+        global transcript_storage
+        transcript_storage = request.transcript
+        console.print("Transcript uploaded successfully", style="green")
+        return {"status": "success"}
+    except Exception as e:
+        console.print(f"Error in /upload_transcript: {e}", style="red")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/transcript")
+async def get_transcript():
+    try:
+        console.print("Received /transcript request", style="bold yellow")
+        return {"transcript": transcript_storage}
+    except Exception as e:
+        console.print(f"Error in /transcript: {e}", style="red")
+        raise HTTPException(status_code=500, detail=str(e))
+
+if __name__ == "__main__":
+    import uvicorn
+    uvicorn.run("app.main:app", host="0.0.0.0", port=8002, reload=True)
+
+
+import { useState, useRef, useEffect } from "react";
+import { Card, CardContent } from "@/components/ui/card";
+import VideoPreview from "./diagnosis/VideoPreview";
+import ConversationDisplay from "./diagnosis/ConversationDisplay";
+import SessionControls from "./diagnosis/SessionControls";
+import DiagnosisResults from "./DiagnosisResults";
+
+interface Message {
+  sender: "ai" | "user";
+  text: string;
+  timestamp: Date;
+}
+
+interface APIMessage {
+  role: "system" | "user" | "assistant";
+  content: string;
+}
+
+interface SessionResults {
+  session_id: string;
+  gaze_tracking: { report?: string; error?: string };
+  emotion_recognition: {
+    session_id?: string;
+    summary?: string;
+    stats?: string;
+    interpretation?: string;
+    error?: string;
+  };
+  voice_chat: { reply?: string; error?: string };
+  transcript: string;
+  final_report: { report: string; timestamp: string };
+}
+
+const SYSTEM_PROMPT = `You are a compassionate mental health assistant. Engage in a conversational assessment to evaluate the user's mental wellbeing by asking empathetic questions and responding to their answers. Ask one question at a time, wait for the response, and tailor follow-up questions based on their input. Avoid clinical diagnoses and provide supportive responses.`;
+
+const DiagnosisSection: React.FC = () => {
+  const [isRecording, setIsRecording] = useState<boolean>(false);
+  const [sessionEnded, setSessionEnded] = useState<boolean>(false);
+  const [conversation, setConversation] = useState<Message[]>([]);
+  const [sessionResults, setSessionResults] = useState<SessionResults | null>(null);
+  const [isLoading, setIsLoading] = useState<boolean>(false);
+  const [error, setError] = useState<string | null>(null);
+  const [isListening, setIsListening] = useState<boolean>(false);
+  const [textInput, setTextInput] = useState<string>("");
+  const [isSpeaking, setIsSpeaking] = useState<boolean>(false);
+  const webcamRef = useRef<HTMLVideoElement>(null);
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+  const streamRef = useRef<MediaStream | null>(null);
+  const conversationRef = useRef<HTMLDivElement>(null);
+  const recognitionRef = useRef<SpeechRecognition | null>(null);
+  const transcriptLogRef = useRef<string[]>([]);
+  const messagesRef = useRef<APIMessage[]>([{ role: "system", content: SYSTEM_PROMPT }]);
+  const isManualEndRef = useRef<boolean>(false);
+  const lastAIMessageRef = useRef<string>("");
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const sessionIdRef = useRef<string>("");
+  const frameIntervalRef = useRef<NodeJS.Timeout | null>(null);
+
+  const scrollToBottom = () => {
+    if (conversationRef.current) {
+      conversationRef.current.scrollTop = conversationRef.current.scrollHeight;
+    }
+  };
+
+  useEffect(() => {
+    scrollToBottom();
+  }, [conversation]);
+
+  const startSpeechRecognition = () => {
+    if (recognitionRef.current && isRecording && !isListening && !sessionEnded && !isSpeaking) {
+      console.log("Starting speech recognition...");
+      try {
+        recognitionRef.current.start();
+      } catch (err) {
+        console.error("Failed to start speech recognition:", err);
+        setError("Failed to start speech recognition. Please check microphone permissions or try typing.");
+      }
+    }
+  };
+
+  const checkMicrophone = async () => {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      stream.getTracks().forEach((track) => track.stop());
+      console.log("Microphone access granted");
+      return true;
+    } catch (err) {
+      console.error("Microphone access error:", err);
+      setError("Microphone access denied. Please enable it in Chrome Settings > Privacy and Security > Site Settings > Microphone.");
+      return false;
+    }
+  };
+
+  const sendFrameToBackend = async () => {
+    if (!webcamRef.current || !canvasRef.current || !isRecording || sessionEnded) {
+      console.log("Skipping frame send: session ended or not recording");
+      return;
+    }
+
+    const context = canvasRef.current.getContext("2d");
+    if (!context) return;
+
+    context.drawImage(webcamRef.current, 0, 0, canvasRef.current.width, canvasRef.current.height);
+    const frame = canvasRef.current.toDataURL("image/jpeg", 0.8);
+
+    const payload = { frame, session_id: sessionIdRef.current };
+    console.log(`Sending frame to backend (session: ${sessionIdRef.current})`);
+
+    try {
+      const [gazeResponse, emotionResponse] = await Promise.all([
+        fetch("http://127.0.0.1:8001/capture-eye-tracking", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload),
+        }),
+        fetch("http://127.0.0.1:8000/analyze-live-emotion", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload),
+        }),
+      ]);
+
+      if (!gazeResponse.ok) {
+        console.error("Gaze tracking error:", await gazeResponse.text());
+      } else {
+        console.log("Gaze tracking success:", await gazeResponse.json());
+      }
+
+      if (!emotionResponse.ok) {
+        console.error("Emotion recognition error:", await emotionResponse.text());
+      } else {
+        console.log("Emotion recognition success:", await emotionResponse.json());
+      }
+    } catch (err) {
+      console.error("Error sending frame:", err);
+    }
+  };
+
+  // Manage frame sending interval
+  useEffect(() => {
+    if (isRecording && !sessionEnded) {
+      console.log("Starting frame sending interval");
+      sessionIdRef.current = new Date().toISOString();
+      frameIntervalRef.current = setInterval(sendFrameToBackend, 1000);
+    }
+
+    return () => {
+      if (frameIntervalRef.current) {
+        console.log("Cleaning up frame sending interval");
+        clearInterval(frameIntervalRef.current);
+        frameIntervalRef.current = null;
+      }
+    };
+  }, [isRecording, sessionEnded]);
+
+  useEffect(() => {
+    // Check microphone permissions
+    navigator.permissions.query({ name: "microphone" as PermissionName }).then((result) => {
+      if (result.state === "denied") {
+        setError("Microphone access is denied. Please enable it in Chrome Settings > Privacy and Security > Site Settings > Microphone.");
+      } else if (result.state === "prompt") {
+        console.log("Microphone permission will be requested.");
+      }
+    });
+
+    // Initialize Web Speech API
+    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+    if (SpeechRecognition) {
+      recognitionRef.current = new SpeechRecognition();
+      recognitionRef.current.continuous = true;
+      recognitionRef.current.interimResults = false;
+      recognitionRef.current.lang = "en-US";
+
+      recognitionRef.current.onstart = () => {
+        console.log("Speech recognition started");
+        setIsListening(true);
+      };
+
+      recognitionRef.current.onresult = (event) => {
+        if (sessionEnded) {
+          console.log("Ignoring speech recognition after session end");
+          return;
+        }
+        const transcript = event.results[event.results.length - 1][0].transcript.trim();
+        console.log("Speech recognized:", transcript);
+        const isAIMessage = lastAIMessageRef.current && (
+          transcript.toLowerCase().includes(lastAIMessageRef.current.toLowerCase().slice(0, 20)) ||
+          lastAIMessageRef.current.toLowerCase().includes(transcript.toLowerCase().slice(0, 20))
+        );
+        if (!isAIMessage) {
+          handleUserMessage(transcript);
+        } else {
+          console.log("Ignoring AI message:", transcript);
+        }
+      };
+
+      recognitionRef.current.onerror = (event) => {
+        console.error("Speech recognition error:", event.error);
+        let errorMessage = `Speech recognition failed: ${event.error}`;
+        if (event.error === "not-allowed") {
+          errorMessage = "Microphone access denied. Please allow microphone permissions in Chrome Settings > Privacy and Security > Site Settings > Microphone.";
+        } else if (event.error === "no-speech") {
+          errorMessage = "No speech detected. Please speak clearly or try typing your response.";
+        } else if (event.error === "network") {
+          errorMessage = "Network error in speech recognition. Please check your internet connection.";
+        }
+        setError(errorMessage);
+        setIsListening(false);
+      };
+
+      recognitionRef.current.onend = () => {
+        console.log("Speech recognition ended");
+        setIsListening(false);
+        if (isRecording && !sessionEnded && !isSpeaking) {
+          console.log("Attempting to restart speech recognition...");
+          setTimeout(() => startSpeechRecognition(), 3000);
+        }
+      };
+    } else {
+      setError("Speech recognition not supported in this browser. Please use Chrome or type your responses.");
+    }
+
+    // Load TTS voices
+    const loadVoices = () => {
+      const voices = window.speechSynthesis.getVoices();
+      if (voices.length > 0) {
+        console.log("Available TTS voices:", voices.map((v) => v.name));
+      }
+    };
+    window.speechSynthesis.onvoiceschanged = loadVoices;
+    loadVoices();
+
+    return () => {
+      console.log("Component unmount: Cleaning up...");
+      if (recognitionRef.current) {
+        recognitionRef.current.stop();
+      }
+      window.speechSynthesis.cancel();
+      if (frameIntervalRef.current) {
+        console.log("Unmount: Clearing frame interval");
+        clearInterval(frameIntervalRef.current);
+        frameIntervalRef.current = null;
+      }
+      if (streamRef.current) {
+        console.log("Unmount: Stopping webcam stream");
+        streamRef.current.getTracks().forEach((track) => track.stop());
+        streamRef.current = null;
+      }
+    };
+  }, []);
+
+  const startSession = async () => {
+    try {
+      setIsLoading(true);
+      setError(null);
+      transcriptLogRef.current = [];
+      messagesRef.current = [{ role: "system", content: SYSTEM_PROMPT }];
+
+      const micAvailable = await checkMicrophone();
+      if (!micAvailable) {
+        throw new Error("Microphone access required to start session.");
+      }
+
+      console.log("Requesting media permissions...");
+      const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
+      streamRef.current = stream;
+
+      if (webcamRef.current) {
+        webcamRef.current.srcObject = stream;
+      }
+
+      mediaRecorderRef.current = new MediaRecorder(stream);
+      mediaRecorderRef.current.start();
+      setIsRecording(true);
+      setSessionEnded(false);
+
+      const initialMessage =
+        "Hello, I'm your AI psychological assessment assistant. How are you feeling today?";
+      setConversation([{ sender: "ai", text: initialMessage, timestamp: new Date() }]);
+      messagesRef.current.push({ role: "assistant", content: initialMessage });
+      transcriptLogRef.current.push(`Assistant: ${initialMessage}`);
+      lastAIMessageRef.current = initialMessage;
+      speak(initialMessage);
+    } catch (err: any) {
+      console.error("Error starting session:", err);
+      setError(err.message || "Failed to start session. Please check microphone and camera permissions.");
+      endSession(false);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleUserMessage = async (userMessage: string) => {
+    if (!isRecording || sessionEnded) {
+      console.log("Ignoring user message: session ended or not recording");
+      return;
+    }
+
+    console.log("Handling user message:", userMessage);
+    setConversation((prev) => [
+      ...prev,
+      { sender: "user", text: userMessage, timestamp: new Date() },
+    ]);
+    transcriptLogRef.current.push(`User: ${userMessage}`);
+    messagesRef.current.push({ role: "user", content: userMessage });
+
+    if (shouldEndConversation(userMessage)) {
+      const goodbyeMsg = "Goodbye! Take care.";
+      setConversation((prev) => [
+        ...prev,
+        { sender: "ai", text: goodbyeMsg, timestamp: new Date() },
+      ]);
+      transcriptLogRef.current.push(`Assistant: ${goodbyeMsg}`);
+      messagesRef.current.push({ role: "assistant", content: goodbyeMsg });
+      lastAIMessageRef.current = goodbyeMsg;
+      speak(goodbyeMsg);
+      await endSession(false);
+      return;
+    }
+
+    const memorySize = 10;
+    if (messagesRef.current.length > memorySize) {
+      messagesRef.current = [
+        { role: "system", content: SYSTEM_PROMPT },
+        ...messagesRef.current.slice(-(memorySize - 1)),
+      ];
+    }
+
+    try {
+      setIsLoading(true);
+      console.log("Sending request to /chat...");
+      const response = await fetch("http://127.0.0.1:8002/chat", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ messages: messagesRef.current }),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.text();
+        throw new Error(`Failed to get AI response: ${response.status} - ${errorData}`);
+      }
+
+      const data = await response.json();
+      const assistantReply = data.reply || "Sorry, something went wrong.";
+      console.log("Received /chat response:", assistantReply);
+      setConversation((prev) => [
+        ...prev,
+        { sender: "ai", text: assistantReply, timestamp: new Date() },
+      ]);
+      transcriptLogRef.current.push(`Assistant: ${assistantReply}`);
+      messagesRef.current.push({ role: "assistant", content: assistantReply });
+      lastAIMessageRef.current = assistantReply;
+      speak(assistantReply);
+    } catch (err: any) {
+      console.error("Error in /chat request:", err);
+      let errorMessage = err.message || "Failed to get AI response.";
+      if (err.message.includes("net::ERR_FAILED")) {
+        errorMessage = "Failed to connect to the voice agent API. Please ensure the backend is running on port 8002.";
+      }
+      setError(errorMessage);
+      setConversation((prev) => [
+        ...prev,
+        { sender: "ai", text: `Error: ${errorMessage}`, timestamp: new Date() },
+      ]);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const speak = (text: string) => {
+    console.log("Speaking:", text);
+    setIsSpeaking(true);
+    if (recognitionRef.current && isListening) {
+      recognitionRef.current.stop();
+      console.log("Paused speech recognition during TTS");
+    }
+    const utterance = new SpeechSynthesisUtterance(text);
+    utterance.lang = "en-US";
+    const voices = window.speechSynthesis.getVoices();
+    utterance.voice = voices.find((voice) => voice.name.includes("Google UK English Female")) || voices[0];
+    utterance.rate = 1.0;
+    utterance.pitch = 1.0;
+    utterance.volume = 1.0;
+    utterance.onstart = () => console.log("Speech started");
+    utterance.onend = () => {
+      console.log("Speech finished");
+      setIsSpeaking(false);
+      if (isRecording && !sessionEnded) {
+        setTimeout(() => startSpeechRecognition(), 3000);
+      }
+    };
+    utterance.onerror = (event) => console.error("Speech synthesis error:", event.error);
+    window.speechSynthesis.speak(utterance);
+  };
+
+  const testAudio = () => {
+    console.log("Testing audio output...");
+    const voices = window.speechSynthesis.getVoices();
+    console.log("Available voices:", voices.map((v) => v.name));
+    const testVoices = [
+      "Google UK English Female",
+      "Google US English",
+      "Google UK English Male",
+    ];
+    testVoices.forEach((voiceName, index) => {
+      const utterance = new SpeechSynthesisUtterance(`Testing audio with ${voiceName}. Can you hear this?`);
+      utterance.volume = 1.0;
+      utterance.rate = 1.0;
+      utterance.pitch = 1.0;
+      utterance.lang = "en-US";
+      utterance.voice = voices.find((voice) => voice.name.includes(voiceName)) || voices[0];
+      utterance.onstart = () => console.log(`Test audio started: ${voiceName}`);
+      utterance.onend = () => console.log(`Test audio finished: ${voiceName}`);
+      utterance.onerror = (event) => console.error(`Test audio error for ${voiceName}:`, event.error);
+      setTimeout(() => window.speechSynthesis.speak(utterance), index * 3000);
+    });
+  };
+
+  const shouldEndConversation = (message: string): boolean => {
+    const lowerMessage = message.toLowerCase();
+    return lowerMessage.includes("goodbye") || lowerMessage.includes("end") || lowerMessage.includes("stop");
+  };
+
+  const endSession = async (isManual: boolean = false) => {
+    console.log("Ending session, manual:", isManual);
+    isManualEndRef.current = isManual;
+
+    // Stop media recorder
+    if (mediaRecorderRef.current && mediaRecorderRef.current.state !== "inactive") {
+      mediaRecorderRef.current.stop();
+    }
+
+    // Stop webcam stream
+    if (streamRef.current) {
+      console.log("Stopping webcam stream");
+      streamRef.current.getTracks().forEach((track) => track.stop());
+      streamRef.current = null;
+    }
+
+    // Stop speech recognition
+    if (recognitionRef.current) {
+      console.log("Stopping speech recognition");
+      recognitionRef.current.stop();
+      recognitionRef.current.onresult = null;
+      recognitionRef.current.onerror = null;
+      recognitionRef.current.onend = null;
+    }
+
+    // Stop frame sending
+    if (frameIntervalRef.current) {
+      console.log("Clearing frame sending interval");
+      clearInterval(frameIntervalRef.current);
+      frameIntervalRef.current = null;
+    }
+
+    setIsRecording(false);
+    setIsListening(false);
+    setSessionEnded(true);
+
+    // Upload transcript
+    if (isManual && transcriptLogRef.current.length > 0) {
+      try {
+        console.log("Uploading transcript...");
+        const transcript = transcriptLogRef.current.join("\n");
+        const response = await fetch("http://127.0.0.1:8002/upload_transcript", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ transcript }),
+        });
+        if (!response.ok) {
+          throw new Error(`Failed to upload transcript: ${response.status} - ${await response.text()}`);
+        }
+        console.log("Transcript uploaded successfully");
+      } catch (err: any) {
+        console.error("Error uploading transcript:", err);
+        setError(err.message || "Failed to upload transcript.");
+      }
+    }
+
+    // Call unified API for report
+    if (isManual) {
+      try {
+        setIsLoading(true);
+        console.log("Calling /start-session...");
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 120000);
+        try {
+          const response = await fetch("http://127.0.0.1:8003/start-session", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ messages: messagesRef.current.slice(0, 5), is_post_session: true }),
+            signal: controller.signal,
+          });
+
+          if (!response.ok) {
+            const errorData = await response.text();
+            throw new Error(`Failed to generate report: ${response.status} - ${errorData}`);
+          }
+
+          const data: SessionResults = await response.json();
+          setSessionResults(data);
+          console.log("Received /start-session response:", data);
+
+          if (data.transcript) {
+            const transcriptLines = data.transcript.split("\n");
+            const transcriptMessages: Message[] = transcriptLines.map((line: string, index: number) => {
+              const isUser = line.startsWith("User:");
+              return {
+                sender: isUser ? "user" : "ai",
+                text: line.replace(/^(User|Assistant): /, ""),
+                timestamp: new Date(Date.now() + index * 1000),
+              };
+            });
+            setConversation((prev) => [
+              ...prev,
+              ...transcriptMessages.filter((msg) => !prev.some((p) => p.text === msg.text)),
+            ]);
+          }
+        } finally {
+          clearTimeout(timeoutId);
+        }
+      } catch (err: any) {
+        console.error("Error in /start-session:", err);
+        setError(err.message || "Failed to generate report. Please ensure the unified API is running on port 8003.");
+      } finally {
+        setIsLoading(false);
+      }
+    }
+
+    if (!error) {
+      const finalMessage = "Thank you for completing this assessment session. You can now review the results below.";
+      setConversation((prev) => [...prev, { sender: "ai", text: finalMessage, timestamp: new Date() }]);
+    }
+  };
+
+  const saveTranscript = () => {
+    const transcript = conversation
+      .map((msg) => `[${msg.timestamp.toLocaleTimeString()}] ${msg.sender === "ai" ? "AI" : "You"}: ${msg.text}`)
+      .join("\n\n");
+
+    const blob = new Blob([transcript], { type: "text/plain" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `psyche-ai-transcript-${new Date().toISOString().slice(0, 10)}.txt`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  };
+
+  return (
+    <section id="diagnosis" className="py-24 bg-gradient-to-b from-white to-psyche-gray-light">
+      <div className="container mx-auto px-4">
+        <div className="text-center mb-16">
+          <h2 className="text-3xl font-bold mb-4">
+            Start Your <span className="bg-gradient-to-r from-psyche-purple to-psyche-blue bg-clip-text text-transparent">AI Diagnosis</span>
+          </h2>
+          <p className="text-gray-600 max-w-2xl mx-auto">
+            Interact with our AI voice agent for a comprehensive psychological assessment
+          </p>
+        </div>
+
+        <div className="grid grid-cols-1 lg:grid-cols-5 gap-8">
+          <div className="lg:col-span-2 flex flex-col">
+            <Card className="flex-1">
+              <CardContent className="p-0 relative h-full flex flex-col">
+                <VideoPreview isRecording={isRecording} sessionEnded={sessionEnded} webcamRef={webcamRef} />
+                <canvas ref={canvasRef} width="1280" height="720" style={{ display: "none" }} />
+              </CardContent>
+            </Card>
+
+            <SessionControls
+              isRecording={isRecording}
+              sessionEnded={sessionEnded}
+              onStartSession={startSession}
+              onEndSession={() => endSession(true)}
+              isLoading={isLoading}
+            />
+
+            <div className="mt-4 flex gap-2">
+              <button
+                onClick={startSpeechRecognition}
+                disabled={!isRecording || isListening || isSpeaking}
+                className="px-4 py-2 bg-blue-500 text-white rounded disabled:bg-gray-300"
+              >
+                Restart Speech
+              </button>
+              <button
+                onClick={testAudio}
+                className="px-4 py-2 bg-green-500 text-white rounded"
+              >
+                Test Audio
+              </button>
+            </div>
+
+            {isRecording && (
+              <div className="mt-4">
+                <input
+                  type="text"
+                  value={textInput}
+                  onChange={(e) => setTextInput(e.target.value)}
+                  onKeyPress={(e) => {
+                    if (e.key === "Enter" && textInput.trim()) {
+                      handleUserMessage(textInput);
+                      setTextInput("");
+                    }
+                  }}
+                  placeholder="Type your response if speech fails..."
+                  className="w-full p-2 border rounded"
+                />
+              </div>
+            )}
+          </div>
+
+          <div className="lg:col-span-3 flex flex-col">
+            <div className="flex flex-col h-[500px] mb-4">
+              <div className="mb-4 flex items-center justify-between">
+                <h3 className="text-xl font-medium">Live Conversation</h3>
+                <div
+                  className={`px-3 py-1 rounded-full text-xs ${
+                    isLoading
+                      ? "bg-blue-100 text-blue-800"
+                      : isSpeaking
+                      ? "bg-orange-100 text-orange-800"
+                      : isListening
+                      ? "bg-purple-100 text-purple-800"
+                      : isRecording
+                      ? "bg-green-100 text-green-800"
+                      : sessionEnded
+                      ? "bg-gray-100 text-gray-800"
+                      : "bg-yellow-100 text-yellow-800"
+                  }`}
+                >
+                  {isLoading
+                    ? "Processing..."
+                    : isSpeaking
+                    ? "Speaking..."
+                    : isListening
+                    ? "Listening..."
+                    : isRecording
+                    ? "Active Session"
+                    : sessionEnded
+                    ? "Session Complete"
+                    : "Ready to Begin"}
+                </div>
+              </div>
+
+              <Card className="flex-1 min-h-0">
+                <CardContent className="p-0 h-full">
+                  <ConversationDisplay
+                    conversation={conversation}
+                    conversationRef={conversationRef}
+                    isRecording={isRecording}
+                  />
+                </CardContent>
+              </Card>
+            </div>
+            {error && (
+              <div className="p-4 bg-red-100 text-red-800 rounded-md">
+                <p>{error}</p>
+              </div>
+            )}
+          </div>
+
+          {sessionEnded && sessionResults && (
+            <div className="lg:col-span-5 w-full flex justify-center">
+              <div className="w-full max-w-4xl">
+                <DiagnosisResults
+                  isVisible={sessionEnded}
+                  conversation={conversation}
+                  sessionResults={sessionResults}
+                />
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
+    </section>
+  );
+};
+
+export default DiagnosisSection;
+
+import React from 'react';
+import { Video } from 'lucide-react';
+
+interface VideoPreviewProps {
+  isRecording: boolean;
+  sessionEnded: boolean;
+  webcamRef: React.RefObject<HTMLVideoElement>;
+}
+
+const VideoPreview = ({ isRecording, sessionEnded, webcamRef }: VideoPreviewProps) => {
+  return (
+    <div className="aspect-video bg-black relative">
+      {!isRecording && !sessionEnded ? (
+        <div className="absolute inset-0 flex items-center justify-center flex-col text-white z-10">
+          <div className="w-20 h-20 rounded-full bg-psyche-purple/20 flex items-center justify-center mb-4">
+            <Video className="w-8 h-8 text-psyche-purple" />
+          </div>
+          <p className="text-gray-300">Camera will activate when session starts</p>
+        </div>
+      ) : null}
+      <video
+        ref={webcamRef}
+        autoPlay
+        playsInline
+        muted
+        className="w-full h-full object-cover"
+        style={{ display: isRecording && !sessionEnded ? 'block' : 'none' }}
+      />
+      {sessionEnded ? (
+        <div className="absolute inset-0 flex items-center justify-center flex-col bg-black/80 text-white z-10">
+          <p className="text-xl font-medium mb-2">Session Complete</p>
+          <p className="text-gray-300">Video recording has ended</p>
+        </div>
+      ) : null}
+      {isRecording && !sessionEnded ? (
+        <div className="absolute top-4 right-4 flex items-center gap-2 bg-red-500/80 px-3 py-1 rounded-full text-white text-sm z-10">
+          <div className="w-2 h-2 bg-white rounded-full animate-recording-pulse"></div>
+          Recording
+        </div>
+      ) : null}
+    </div>
+  );
+};
+
+export default VideoPreview;
+
+import { Button } from "@/components/ui/button";
+
+interface SessionControlsProps {
+  isRecording: boolean;
+  sessionEnded: boolean;
+  onStartSession: () => void;
+  onEndSession: () => void;
+  isLoading: boolean;
+}
+
+const SessionControls: React.FC<SessionControlsProps> = ({
+  isRecording,
+  sessionEnded,
+  onStartSession,
+  onEndSession,
+  isLoading,
+}) => {
+  return (
+    <div className="mt-4 flex gap-4">
+      <Button
+        onClick={onStartSession}
+        disabled={isRecording || sessionEnded || isLoading}
+        className="bg-psyche-purple hover:bg-psyche-purple-dark text-white"
+      >
+        {isLoading ? "Starting..." : "Start Session"}
+      </Button>
+      <Button
+        onClick={onEndSession}
+        disabled={!isRecording || isLoading}
+        variant="outline"
+      >
+        End Session
+      </Button>
+    </div>
+  );
+};
+
+export default SessionControls;
+
+import { RefObject } from "react";
+
+interface Message {
+  sender: "ai" | "user";
+  text: string;
+  timestamp: Date;
+}
+
+interface ConversationDisplayProps {
+  conversation: Message[];
+  conversationRef: RefObject<HTMLDivElement>;
+  isRecording: boolean;
+}
+
+const ConversationDisplay: React.FC<ConversationDisplayProps> = ({
+  conversation,
+  conversationRef,
+  isRecording,
+}) => {
+  return (
+    <div
+      ref={conversationRef}
+      className="h-full overflow-y-auto p-4 bg-gray-50"
+    >
+      {conversation.map((msg, index) => (
+        <div
+          key={index}
+          className={`mb-4 ${
+            msg.sender === "ai" ? "text-left" : "text-right"
+          }`}
+        >
+          <div
+            className={`inline-block p-3 rounded-lg ${
+              msg.sender === "ai"
+                ? "bg-psyche-purple-light text-gray-800"
+                : "bg-psyche-blue text-white"
+            }`}
+          >
+            <p>{msg.text}</p>
+            <p className="text-xs text-gray-500 mt-1">
+              {msg.timestamp.toLocaleTimeString()}
+            </p>
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+};
+
+export default ConversationDisplay;
+
+import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Printer } from "lucide-react";
+
+interface Message {
+  sender: "ai" | "user";
+  text: string;
+  timestamp: Date;
+}
+
+interface SessionResults {
+  session_id: string;
+  gaze_tracking: { report?: string; error?: string };
+  emotion_recognition: {
+    session_id?: string;
+    summary?: string;
+    stats?: string;
+    interpretation?: string;
+    error?: string;
+  };
+  voice_chat: { reply?: string; error?: string };
+  transcript: string;
+  final_report: { report: string; timestamp: string };
+}
+
+interface DiagnosisResultsProps {
+  isVisible: boolean;
+  conversation: Message[];
+  sessionResults: SessionResults;
+}
+
+const DiagnosisResults: React.FC<DiagnosisResultsProps> = ({ isVisible, conversation, sessionResults }) => {
+  const handlePrintReport = () => {
+    const printWindow = window.open("", "_blank");
+    if (!printWindow) return;
+
+    const formattedConversation = conversation
+      .map((msg) => `${msg.sender === "ai" ? "AI" : "Patient"}: ${msg.text}`)
+      .join("\n\n");
+
+    const content = `
+      <html>
+        <head>
+          <title>Psychology Diagnosis Report</title>
+          <style>
+            body { font-family: Arial, sans-serif; line-height: 1.6; padding: 20px; }
+            h1, h2 { color: #7E69AB; }
+            .section { margin-bottom: 20px; }
+            .timestamp { color: #666; font-size: 0.9em; }
+            pre { white-space: pre-wrap; }
+          </style>
+        </head>
+        <body>
+          <h1>Psychology Diagnosis Report</h1>
+          <div class="section">
+            <h2>Session Summary</h2>
+            <p>Date: ${new Date().toLocaleDateString()}</p>
+            <p>Session ID: ${sessionResults?.session_id || "N/A"}</p>
+          </div>
+          <div class="section">
+            <h2>Gaze Tracking Analysis</h2>
+            <p>${sessionResults?.gaze_tracking?.report || "Data unavailable"}</p>
+          </div>
+          <div class="section">
+            <h2>Emotion Recognition Analysis</h2>
+            <p><strong>Summary:</strong> ${sessionResults?.emotion_recognition?.summary || "Data unavailable"}</p>
+            <p><strong>Statistics:</strong> ${sessionResults?.emotion_recognition?.stats || "Data unavailable"}</p>
+            <p><strong>Interpretation:</strong> ${
+              sessionResults?.emotion_recognition?.interpretation || "Data unavailable"
+            }</p>
+          </div>
+          <div class="section">
+            <h2>Conversation Transcript</h2>
+            <pre>${formattedConversation}</pre>
+          </div>
+          <div class="section">
+            <h2>Comprehensive Assessment</h2>
+            <pre>${sessionResults?.final_report?.report || "Report generation failed"}</pre>
+          </div>
+        </body>
+      </html>
+    `;
+
+    printWindow.document.write(content);
+    printWindow.document.close();
+    printWindow.print();
+  };
+
+  const handlePrintTranscript = () => {
+    const printWindow = window.open("", "_blank");
+    if (!printWindow) return;
+
+    const formattedConversation = conversation
+      .map((msg) => `[${msg.timestamp.toLocaleTimeString()}] ${msg.sender === "ai" ? "AI" : "Patient"}: ${msg.text}`)
+      .join("\n\n");
+
+    const content = `
+      <html>
+        <head>
+          <title>Conversation Transcript</title>
+          <style>
+            body { font-family: Arial, sans-serif; line-height: 1.6; padding: 20px; }
+            h1 { color: #7E69AB; }
+            pre { white-space: pre-wrap; }
+            .timestamp { color: #666; font-size: 0.9em; }
+          </style>
+        </head>
+        <body>
+          <h1>Conversation Transcript</h1>
+          <p>Date: ${new Date().toLocaleDateString()}</p>
+          <pre>${formattedConversation}</pre>
+        </body>
+      </html>
+    `;
+
+    printWindow.document.write(content);
+    printWindow.document.close();
+    printWindow.print();
+  };
+
+  if (!isVisible || !sessionResults) return null;
+
+  return (
+    <div className="mt-8 animate-fade-in">
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center justify-between">
+            <span>Diagnosis Results</span>
+            <div className="flex gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                className="flex items-center gap-2"
+                onClick={handlePrintTranscript}
+              >
+                <Printer className="h-4 w-4" />
+                Print Transcript
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                className="flex items-center gap-2"
+                onClick={handlePrintReport}
+              >
+                <Printer className="h-4 w-4" />
+                Print Report
+              </Button>
+            </div>
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="space-y-6">
+            <div>
+              <h3 className="font-medium mb-2">Session Summary</h3>
+              <p className="text-gray-600">Session ID: {sessionResults.session_id}</p>
+              <p className="text-gray-600">Date: {new Date().toLocaleDateString()}</p>
+            </div>
+            <div>
+              <h3 className="font-medium mb-2">Gaze Tracking Analysis</h3>
+              <p className="text-gray-600">{sessionResults.gaze_tracking?.report || "Data unavailable"}</p>
+            </div>
+            <div>
+              <h3 className="font-medium mb-2">Emotion Recognition Analysis</h3>
+              <p className="text-gray-600">
+                <strong>Summary:</strong> {sessionResults.emotion_recognition?.summary || "Data unavailable"}
+              </p>
+              <p className="text-gray-600">
+                <strong>Statistics:</strong> {sessionResults.emotion_recognition?.stats || "Data unavailable"}
+              </p>
+              <p className="text-gray-600">
+                <strong>Interpretation:</strong>{" "}
+                {sessionResults.emotion_recognition?.interpretation || "Data unavailable"}
+              </p>
+            </div>
+            <div>
+              <h3 className="font-medium mb-2">Comprehensive Assessment</h3>
+              <pre className="text-gray-600 whitespace-pre-wrap">
+                {sessionResults.final_report?.report || "Report generation failed"}
+              </pre>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+    </div>
+  );
+};
+
+export default DiagnosisResults;

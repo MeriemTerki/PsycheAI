@@ -15,6 +15,7 @@ from pinecone import Pinecone, ServerlessSpec
 from langchain_community.embeddings import CohereEmbeddings
 import os
 from dotenv import load_dotenv
+from datetime import datetime
 
 # Load environment variables from .env file
 load_dotenv()
@@ -103,8 +104,9 @@ async def get_relevant_context(query: str, top_k: int = 3) -> str:
         console.print(f"Error retrieving context: {e}", style="red")
         return ""
 
-async def assistant_chat(messages, model='llama3-8b-8192'):
+async def assistant_chat(messages, model='llama3-8b-8192', min_duration=3):
     try:
+        start_time = datetime.now()
         # Check if the last message is a user query that might need RAG
         user_query = messages[-1]['content'] if messages[-1]['role'] == 'user' else ""
         
@@ -127,19 +129,36 @@ async def assistant_chat(messages, model='llama3-8b-8192'):
                     temperature=0.7,
                     max_tokens=150
                 )
-                return res.choices[0].message.content
+                response = res.choices[0].message.content
+            else:
+                # Default response without RAG if context is empty
+                res = await groq.chat.completions.create(
+                    messages=messages,
+                    model=model,
+                    temperature=0.7,
+                    max_tokens=150
+                )
+                response = res.choices[0].message.content
+        else:
+            # Default response without RAG
+            res = await groq.chat.completions.create(
+                messages=messages,
+                model=model,
+                temperature=0.7,
+                max_tokens=150
+            )
+            response = res.choices[0].message.content
         
-        # Default response without RAG
-        res = await groq.chat.completions.create(
-            messages=messages,
-            model=model,
-            temperature=0.7,
-            max_tokens=150
-        )
-        return res.choices[0].message.content
+        # Ensure minimum duration
+        elapsed = (datetime.now() - start_time).total_seconds()
+        if elapsed < min_duration:
+            await asyncio.sleep(min_duration - elapsed)
         
+        console.print(f"[{datetime.now().isoformat()}] Assistant chat completed in {elapsed:.2f} seconds", style="green")
+        return response
+    
     except Exception as e:
-        console.print(f"Error in assistant_chat: {e}", style="red")
+        console.print(f"[{datetime.now().isoformat()}] Error in assistant_chat: {e}", style="red")
         return "Sorry, I encountered an error. Could you please repeat that?"
 
 async def transcribe_audio():
@@ -204,7 +223,7 @@ def should_end_conversation(text):
         return False
     text = text.translate(str.maketrans('', '', string.punctuation))
     text = text.strip().lower()
-    return re.search(r'\b(goodbye|bye|exit|quit)\b$', text) is not None
+    return any(phrase in text for phrase in ["goodbye", "end", "stop"])
 
 def text_to_speech(text):
     try:
@@ -291,6 +310,34 @@ async def run():
         except Exception as e:
             console.print(f"Unexpected error: {e}", style="red")
             continue
+        
+
+import requests
+from fastapi import HTTPException
+
+DEEPGRAM_TTS_URL = 'https://api.deepgram.com/v1/speak?model=aura-asteria-en&encoding=linear16&sample_rate=24000'
+
+def generate_tts_bytes(text: str) -> bytes:
+    """
+    Call Deepgram TTS and return raw WAV audio bytes.
+    """
+    headers = {
+        'Authorization': f'Token {settings.DEEPGRAM_API_KEY}',
+        'Content-Type': 'application/json'
+    }
+    # ensure proper spacing
+    formatted = text.replace('.', '. ').replace('?', '? ').replace('!', '! ')
+    res = requests.post(
+        DEEPGRAM_TTS_URL,
+        headers=headers,
+        json={'text': formatted},
+        stream=True,
+        timeout=15
+    )
+    if res.status_code != 200:
+        raise RuntimeError(f"TTS API error {res.status_code}: {res.text}")
+    return res.content
+
 
 def main():
     try:
