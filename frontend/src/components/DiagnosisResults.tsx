@@ -1,6 +1,4 @@
-import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Printer } from "lucide-react";
+import React from "react";
 
 interface Message {
   sender: "ai" | "user";
@@ -8,16 +6,30 @@ interface Message {
   timestamp: Date;
 }
 
+interface GazeTrackingResult {
+  session_id?: string;
+  summary?: string;
+  stats?: string;
+  interpretation?: string;
+  error?: string;
+  details?: string;
+  data?: any;
+}
+
+interface EmotionRecognitionResult {
+  session_id?: string;
+  summary?: string;
+  stats?: string;
+  interpretation?: string;
+  error?: string;
+  details?: string;
+  data?: any;
+}
+
 interface SessionResults {
   session_id: string;
-  gaze_tracking: { report?: string; error?: string };
-  emotion_recognition: {
-    session_id?: string;
-    summary?: string;
-    stats?: string;
-    interpretation?: string;
-    error?: string;
-  };
+  gaze_tracking: GazeTrackingResult;
+  emotion_recognition: EmotionRecognitionResult;
   voice_chat: { reply?: string; error?: string };
   transcript: string;
   final_report: { report: string; timestamp: string };
@@ -30,165 +42,167 @@ interface DiagnosisResultsProps {
 }
 
 const DiagnosisResults: React.FC<DiagnosisResultsProps> = ({ isVisible, conversation, sessionResults }) => {
-  const handlePrintReport = () => {
-    const printWindow = window.open("", "_blank");
-    if (!printWindow) return;
+  if (!isVisible || !sessionResults) return null;
 
-    const formattedConversation = conversation
-      .map((msg) => `${msg.sender === "ai" ? "AI" : "Patient"}: ${msg.text}`)
-      .join("\n\n");
+  const { session_id, gaze_tracking, emotion_recognition, transcript, final_report } = sessionResults;
 
-    const content = `
-      <html>
-        <head>
-          <title>Psychology Diagnosis Report</title>
-          <style>
-            body { font-family: Arial, sans-serif; line-height: 1.6; padding: 20px; }
-            h1, h2 { color: #7E69AB; }
-            .section { margin-bottom: 20px; }
-            .timestamp { color: #666; font-size: 0.9em; }
-            pre { white-space: pre-wrap; }
-          </style>
-        </head>
-        <body>
-          <h1>Psychology Diagnosis Report</h1>
-          <div class="section">
-            <h2>Session Summary</h2>
-            <p>Date: ${new Date().toLocaleDateString()}</p>
-            <p>Session ID: ${sessionResults?.session_id || "N/A"}</p>
-          </div>
-          <div class="section">
-            <h2>Gaze Tracking Analysis</h2>
-            <p>${sessionResults?.gaze_tracking?.report || sessionResults?.gaze_tracking?.error || "Data unavailable"}</p>
-          </div>
-          <div class="section">
-            <h2>Emotion Recognition Analysis</h2>
-            <p><strong>Summary:</strong> ${sessionResults?.emotion_recognition?.summary || sessionResults?.emotion_recognition?.error || "Data unavailable"}</p>
-            <p><strong>Statistics:</strong> ${sessionResults?.emotion_recognition?.stats || "Data unavailable"}</p>
-            <p><strong>Interpretation:</strong> ${sessionResults?.emotion_recognition?.interpretation || "Data unavailable"}</p>
-          </div>
-          <div class="section">
-            <h2>Conversation Transcript</h2>
-            <pre>${formattedConversation}</pre>
-          </div>
-          <div class="section">
-            <h2>Comprehensive Assessment</h2>
-            <pre>${sessionResults?.final_report?.report || "Report generation failed"}</pre>
-          </div>
-        </body>
-      </html>
-    `;
+  // Format session ID for display (remove milliseconds and 'Z')
+  const formattedSessionId = session_id.replace(/\.\d{3}Z$/, "").replace(/[-:T]/g, "");
 
-    printWindow.document.write(content);
-    printWindow.document.close();
-    printWindow.print();
+  // Helper to render analysis section
+  const renderAnalysisSection = (title: string, data: GazeTrackingResult | EmotionRecognitionResult) => {
+    console.log(`[Render] Rendering ${title} with data:`, JSON.stringify(data, null, 2));
+    if (data.error) {
+      return (
+        <div style={{ marginBottom: "24px" }}>
+          <h4 style={{ fontSize: "18px", fontWeight: "bold", marginBottom: "8px" }}>{title}</h4>
+          <p style={{ color: "#991b1b" }}>Report generation failed: {data.error}</p>
+          {data.details && <p style={{ color: "#991b1b" }}>Details: {data.details}</p>}
+        </div>
+      );
+    }
+
+    return (
+      <div style={{ marginBottom: "24px" }}>
+        <h4 style={{ fontSize: "18px", fontWeight: "bold", marginBottom: "8px" }}>{title}</h4>
+        {data.summary && <p><strong>Summary:</strong> {data.summary}</p>}
+        {data.stats && (
+          <p style={{ whiteSpace: "pre-line" }}>
+            <strong>Statistics:</strong> {data.stats}
+          </p>
+        )}
+        {data.interpretation && (
+          <p style={{ whiteSpace: "pre-line" }}>
+            <strong>Interpretation:</strong> {data.interpretation}
+          </p>
+        )}
+      </div>
+    );
   };
 
   const handlePrintTranscript = () => {
-    const printWindow = window.open("", "_blank");
-    if (!printWindow) return;
-
-    const formattedConversation = conversation
-      .map((msg) => `[${msg.timestamp.toLocaleTimeString()}] ${msg.sender === "ai" ? "AI" : "Patient"}: ${msg.text}`)
+    const text = conversation
+      .map((m) => `[${m.timestamp.toLocaleTimeString()}] ${m.sender === "ai" ? "AI" : "You"}: ${m.text}`)
       .join("\n\n");
-
-    const content = `
-      <html>
-        <head>
-          <title>Conversation Transcript</title>
-          <style>
-            body { font-family: Arial, sans-serif; line-height: 1.6; padding: 20px; }
-            h1 { color: #7E69AB; }
-            pre { white-space: pre-wrap; }
-            .timestamp { color: #666; font-size: 0.9em; }
-          </style>
-        </head>
-        <body>
-          <h1>Conversation Transcript</h1>
-          <p>Date: ${new Date().toLocaleDateString()}</p>
-          <pre>${formattedConversation}</pre>
-        </body>
-      </html>
-    `;
-
-    printWindow.document.write(content);
-    printWindow.document.close();
-    printWindow.print();
+    const printWindow = window.open("", "_blank");
+    if (printWindow) {
+      printWindow.document.write(`
+        <html>
+          <head><title>Transcript</title></head>
+          <body>
+            <h1>Conversation Transcript</h1>
+            <pre>${text}</pre>
+            <script>window.print(); window.close();</script>
+          </body>
+        </html>
+      `);
+      printWindow.document.close();
+    }
   };
 
-  if (!isVisible || !sessionResults) return null;
-
-  console.log("[DiagnosisResults] sessionResults:", sessionResults); // for debugging
+  const handlePrintReport = () => {
+    const printWindow = window.open("", "_blank");
+    if (printWindow) {
+      const gazeSection = gaze_tracking.error
+        ? `<p><strong>Gaze Tracking Analysis:</strong> Report generation failed: ${gaze_tracking.error}</p>`
+        : `
+          <h3>Gaze Tracking Analysis</h3>
+          <p><strong>Summary:</strong> ${gaze_tracking.summary}</p>
+          <p><strong>Statistics:</strong> ${gaze_tracking.stats.replace(/\n/g, "<br>")}</p>
+          <p><strong>Interpretation:</strong> ${gaze_tracking.interpretation.replace(/\n/g, "<br>")}</p>
+        `;
+      const emotionSection = emotion_recognition.error
+        ? `<p><strong>Emotion Recognition Analysis:</strong> Report generation failed: ${emotion_recognition.error}</p>`
+        : `
+          <h3>Emotion Recognition Analysis</h3>
+          <p><strong>Summary:</strong> ${emotion_recognition.summary}</p>
+          <p><strong>Statistics:</strong> ${emotion_recognition.stats.replace(/\n/g, "<br>")}</p>
+          <p><strong>Interpretation:</strong> ${emotion_recognition.interpretation.replace(/\n/g, "<br>")}</p>
+        `;
+      const comprehensiveSection = final_report.report
+        ? `
+          <h3>Comprehensive Assessment</h3>
+          <p>${final_report.report.replace(/\n/g, "<br>")}</p>
+        `
+        : "";
+      printWindow.document.write(`
+        <html>
+          <head><title>Diagnosis Report</title></head>
+          <body>
+            <h1>Diagnosis Results</h1>
+            <p><strong>Session ID:</strong> ${formattedSessionId}</p>
+            <p><strong>Date:</strong> ${new Date().toLocaleDateString()}</p>
+            ${gazeSection}
+            ${emotionSection}
+            ${comprehensiveSection}
+            <script>window.print(); window.close();</script>
+          </body>
+        </html>
+      `);
+      printWindow.document.close();
+    }
+  };
 
   return (
-    <div className="mt-8 animate-fade-in">
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center justify-between">
-            <span>Diagnosis Results</span>
-            <div className="flex gap-2">
-              <Button
-                variant="outline"
-                size="sm"
-                className="flex items-center gap-2"
-                onClick={handlePrintTranscript}
-              >
-                <Printer className="h-4 w-4" />
-                Print Transcript
-              </Button>
-              <Button
-                variant="outline"
-                size="sm"
-                className="flex items-center gap-2"
-                onClick={handlePrintReport}
-              >
-                <Printer className="h-4 w-4" />
-                Print Report
-              </Button>
-            </div>
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="space-y-6">
-            <div>
-              <h3 className="font-medium mb-2">Session Summary</h3>
-              <p className="text-gray-600">Session ID: {sessionResults.session_id}</p>
-              <p className="text-gray-600">Date: {new Date().toLocaleDateString()}</p>
-            </div>
-            <div>
-              <h3 className="font-medium mb-2">Gaze Tracking Analysis</h3>
-              <p className="text-gray-600">
-                {sessionResults.gaze_tracking?.report ||
-                 sessionResults.gaze_tracking?.error ||
-                 "Data unavailable"}
-              </p>
-            </div>
-            <div>
-              <h3 className="font-medium mb-2">Emotion Recognition Analysis</h3>
-              <p className="text-gray-600">
-                <strong>Summary:</strong>{" "}
-                {sessionResults.emotion_recognition?.summary ||
-                 sessionResults.emotion_recognition?.error ||
-                 "Data unavailable"}
-              </p>
-              <p className="text-gray-600">
-                <strong>Statistics:</strong>{" "}
-                {sessionResults.emotion_recognition?.stats || "Data unavailable"}
-              </p>
-              <p className="text-gray-600">
-                <strong>Interpretation:</strong>{" "}
-                {sessionResults.emotion_recognition?.interpretation || "Data unavailable"}
-              </p>
-            </div>
-            <div>
-              <h3 className="font-medium mb-2">Comprehensive Assessment</h3>
-              <pre className="text-gray-600 whitespace-pre-wrap">
-                {sessionResults.final_report?.report || "Report generation failed"}
-              </pre>
-            </div>
-          </div>
-        </CardContent>
-      </Card>
+    <div
+      style={{
+        marginTop: "32px",
+        padding: "24px",
+        background: "#ffffff",
+        border: "1px solid #e5e7eb",
+        borderRadius: "8px",
+      }}
+    >
+      <h2 style={{ fontSize: "24px", fontWeight: "bold", marginBottom: "16px" }}>
+        Diagnosis Results
+      </h2>
+      <div style={{ display: "flex", gap: "16px", marginBottom: "24px" }}>
+        <button
+          onClick={handlePrintTranscript}
+          style={{
+            padding: "10px 20px",
+            fontSize: "16px",
+            backgroundColor: "#10b981",
+            color: "white",
+            border: "none",
+            borderRadius: "5px",
+            cursor: "pointer",
+          }}
+          onMouseOver={(e) => (e.currentTarget.style.backgroundColor = "#059669")}
+          onMouseOut={(e) => (e.currentTarget.style.backgroundColor = "#10b981")}
+        >
+          Print Transcript
+        </button>
+        <button
+          onClick={handlePrintReport}
+          style={{
+            padding: "10px 20px",
+            fontSize: "16px",
+            backgroundColor: "#3b82f6",
+            color: "white",
+            border: "none",
+            borderRadius: "5px",
+            cursor: "pointer",
+          }}
+          onMouseOver={(e) => (e.currentTarget.style.backgroundColor = "#1d4ed8")}
+          onMouseOut={(e) => (e.currentTarget.style.backgroundColor = "#3b82f6")}
+        >
+          Print Report
+        </button>
+      </div>
+      <h3 style={{ fontSize: "20px", fontWeight: "medium", marginBottom: "16px" }}>
+        Session Summary
+      </h3>
+      <p><strong>Session ID:</strong> {formattedSessionId}</p>
+      <p><strong>Date:</strong> {new Date().toLocaleDateString()}</p>
+      {renderAnalysisSection("Gaze Tracking Analysis", gaze_tracking)}
+      {renderAnalysisSection("Emotion Recognition Analysis", emotion_recognition)}
+      <div style={{ marginBottom: "24px" }}>
+        <h4 style={{ fontSize: "18px", fontWeight: "bold", marginBottom: "8px" }}>
+          Comprehensive Assessment
+        </h4>
+        <p style={{ whiteSpace: "pre-line" }}>{final_report.report}</p>
+      </div>
     </div>
   );
 };

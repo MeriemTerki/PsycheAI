@@ -23,6 +23,15 @@ interface GazeTrackingResult {
   data?: any;
 }
 
+interface GazeReport {
+  session_id: string;
+  data: any[];
+  summary: string;
+  stats: string;
+  interpretation: string;
+  error?: string;
+}
+
 interface EmotionRecognitionResult {
   session_id?: string;
   summary?: string;
@@ -35,7 +44,7 @@ interface EmotionRecognitionResult {
 
 interface SessionResults {
   session_id: string;
-  gaze_tracking: GazeTrackingResult;
+  gaze_tracking: GazeTrackingResult | GazeReport;
   emotion_recognition: EmotionRecognitionResult;
   voice_chat: { reply?: string; error?: string };
   transcript: string;
@@ -58,7 +67,7 @@ const DiagnosisSection: React.FC = () => {
 
   const webcamRef = useRef<Webcam>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
-  const recognitionRef = useRef<any>(null); // Changed to any to handle browser-specific implementations
+  const recognitionRef = useRef<any>(null);
   const conversationRef = useRef<HTMLDivElement>(null);
   const transcriptLogRef = useRef<string[]>([]);
   const messagesRef = useRef<APIMessage[]>([{ role: "system", content: SYSTEM_PROMPT }]);
@@ -71,7 +80,6 @@ const DiagnosisSection: React.FC = () => {
   const isSpeakingRef = useRef(isSpeaking);
   const lastTranscriptRef = useRef<string>("");
 
-  // Scroll chat to bottom
   const scrollToBottom = () => {
     if (conversationRef.current) {
       conversationRef.current.scrollTop = conversationRef.current.scrollHeight;
@@ -148,6 +156,7 @@ const DiagnosisSection: React.FC = () => {
       ctx.drawImage(webcamRef.current.video, 0, 0, canvasRef.current.width, canvasRef.current.height);
       const frame = canvasRef.current.toDataURL("image/jpeg", 0.8);
       const payload = { frame, session_id: sessionIdRef.current };
+      console.log(`[Frame] Sending frame to /capture-eye-tracking with session_id: ${payload.session_id} at ${new Date().toISOString()}`);
 
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), 5000);
@@ -171,10 +180,11 @@ const DiagnosisSection: React.FC = () => {
 
       if (gazeRes.status === "fulfilled" && gazeRes.value.ok) {
         const gazeData = await gazeRes.value.json();
+        console.log(`[Frame] /capture-eye-tracking response:`, JSON.stringify(gazeData, null, 2));
         setGazeResults((prev) => [...prev, gazeData]);
       } else {
         const error = gazeRes.status === "rejected" ? gazeRes.reason : await gazeRes.value.text();
-        console.error("Gaze tracking error:", error);
+        console.error(`[Frame] Gaze tracking error for session ${payload.session_id}:`, error);
         setGazeResults((prev) => [
           ...prev,
           {
@@ -189,8 +199,8 @@ const DiagnosisSection: React.FC = () => {
         const emotionData = await emotionRes.value.json();
         setEmotionResults((prev) => [...prev, emotionData]);
       } else {
-        const error = emotionRes.status === "rejected" ? gazeRes.reason : await emotionRes.value.text();
-        console.error("Emotion recognition error:", error);
+        const error = emotionRes.status === "rejected" ? emotionRes.reason : await emotionRes.value.text();
+        console.error(`[Frame] Emotion recognition error for session ${payload.session_id}:`, error);
         setEmotionResults((prev) => [
           ...prev,
           {
@@ -201,7 +211,7 @@ const DiagnosisSection: React.FC = () => {
         ]);
       }
     } catch (err: any) {
-      console.error("Frame processing error:", err);
+      console.error(`[Frame] Frame processing error for session ${sessionIdRef.current}:`, err);
       setError(`Error processing frame: ${err.message}`);
     }
   };
@@ -209,6 +219,7 @@ const DiagnosisSection: React.FC = () => {
   useEffect(() => {
     if (isRecording && !sessionEnded) {
       sessionIdRef.current = new Date().toISOString();
+      console.log(`[Session] New session started with session_id: ${sessionIdRef.current}`);
       frameIntervalRef.current = setInterval(sendFrameToBackend, 1000);
     }
     return () => {
@@ -374,38 +385,121 @@ const DiagnosisSection: React.FC = () => {
     }
   };
 
-  const aggregateResults = (): SessionResults => {
-    const lastGaze = [...gazeResults].reverse().find((r) => !r.error) || {
-      error: "No valid gaze data collected",
-    };
-    const lastEmotion = [...emotionResults].reverse().find((r) => !r.error) || {
-      error: "No valid emotion data collected",
-    };
+  const aggregateResults = async (): Promise<SessionResults> => {
+    try {
+      // Increased delay to 7 seconds to ensure all frames are saved
+      console.log(`[Aggregate] Waiting 7 seconds before generating gaze report for session: ${sessionIdRef.current}`);
+      await new Promise((resolve) => setTimeout(resolve, 7000));
 
-    return {
-      session_id: sessionIdRef.current,
-      gaze_tracking: lastGaze.error
-        ? lastGaze
-        : {
-            session_id: lastGaze.session_id,
-            data: lastGaze,
-          },
-      emotion_recognition: lastEmotion.error
-        ? lastEmotion
-        : {
-            summary: lastEmotion.summary,
-            stats: lastEmotion.stats,
-            interpretation: lastEmotion.interpretation,
-            session_id: lastEmotion.session_id,
-            data: lastEmotion,
-          },
-      voice_chat: { reply: "Completed" },
-      transcript: transcriptLogRef.current.join("\n"),
-      final_report: {
-        report: "Analysis completed",
-        timestamp: new Date().toISOString(),
-      },
-    };
+      let gazeData;
+      let attempts = 0;
+      const maxAttempts = 3;
+
+      // Retry logic for /generate-gaze-report
+      while (attempts < maxAttempts) {
+        attempts++;
+        console.log(`[Aggregate] Attempt ${attempts} to call /generate-gaze-report with session_id: ${sessionIdRef.current}`);
+        const gazeRes = await fetch("http://127.0.0.1:8001/generate-gaze-report", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ session_id: sessionIdRef.current }),
+        });
+
+        if (gazeRes.ok) {
+          gazeData = await gazeRes.json();
+          console.log(`[Aggregate] /generate-gaze-report response (attempt ${attempts}):`, JSON.stringify(gazeData, null, 2));
+          if (gazeData.error) {
+            console.warn(`[Aggregate] Gaze report contains error on attempt ${attempts}:`, gazeData.error);
+            gazeData = {
+              error: gazeData.error,
+              details: "Backend returned an error in the response",
+              session_id: sessionIdRef.current,
+            };
+          }
+          break; // Successful response, exit retry loop
+        } else {
+          const errorText = await gazeRes.text();
+          console.error(`[Aggregate] Gaze report error on attempt ${attempts}:`, errorText);
+          if (attempts === maxAttempts) {
+            // Fallback: Use gazeResults from frontend if available
+            if (gazeResults.length > 0) {
+              console.log(`[Aggregate] Falling back to frontend gazeResults for session ${sessionIdRef.current}`);
+              const validFrames = gazeResults.filter((r) => !r.error && r.eye_count && r.eye_count > 0);
+              const totalFrames = gazeResults.length;
+              const avgEyeCount = validFrames.reduce((sum, r) => sum + (r.eye_count || 0), 0) / totalFrames;
+              const gazePoints = validFrames.flatMap((r) => r.gaze_points || []);
+              const avgGazeX = gazePoints.reduce((sum, p) => sum + p.x, 0) / gazePoints.length || 0.5;
+              const avgGazeY = gazePoints.reduce((sum, p) => sum + p.y, 0) / gazePoints.length || 0.5;
+
+              gazeData = {
+                session_id: sessionIdRef.current,
+                summary: `Eye tracking analysis completed: ${validFrames.length}/${totalFrames} frames with eye detections`,
+                stats: `Average eyes detected per frame: ${avgEyeCount.toFixed(2)}\nAverage gaze position: X=${avgGazeX.toFixed(2)}, Y=${avgGazeY.toFixed(2)}`,
+                interpretation: `Fallback analysis based on frontend data. Eyes were detected in ${validFrames.length} out of ${totalFrames} frames.`,
+                data: gazeResults,
+              };
+            } else {
+              gazeData = {
+                error: gazeRes.status === 404 ? "No gaze data collected" : "Gaze report generation failed",
+                details: errorText,
+                session_id: sessionIdRef.current,
+              };
+            }
+          } else {
+            console.log(`[Aggregate] Retrying /generate-gaze-report after 2 seconds...`);
+            await new Promise((resolve) => setTimeout(resolve, 2000));
+          }
+        }
+      }
+
+      const lastEmotion = [...emotionResults].reverse().find((r) => !r.error) || {
+        error: "No valid emotion data collected",
+      };
+
+      const results: SessionResults = {
+        session_id: sessionIdRef.current,
+        gaze_tracking: gazeData.error
+          ? { error: gazeData.error, details: gazeData.details, session_id: sessionIdRef.current }
+          : {
+              summary: gazeData.summary,
+              stats: gazeData.stats,
+              interpretation: gazeData.interpretation,
+              session_id: gazeData.session_id,
+              data: gazeData.data,
+            },
+        emotion_recognition: lastEmotion.error
+          ? lastEmotion
+          : {
+              summary: lastEmotion.summary,
+              stats: lastEmotion.stats,
+              interpretation: lastEmotion.interpretation,
+              session_id: lastEmotion.session_id,
+              data: lastEmotion,
+            },
+        voice_chat: { reply: "Completed" },
+        transcript: transcriptLogRef.current.join("\n"),
+        final_report: {
+          report: "Analysis completed",
+          timestamp: new Date().toISOString(),
+        },
+      };
+
+      console.log(`[Aggregate] Aggregated results:`, JSON.stringify(results, null, 2));
+      return results;
+    } catch (err: any) {
+      console.error(`[Aggregate] Error aggregating results for session ${sessionIdRef.current}:`, err);
+      return {
+        session_id: sessionIdRef.current,
+        gaze_tracking: { error: "Failed to generate gaze report", details: err.message, session_id: sessionIdRef.current },
+        emotion_recognition: { error: "Failed to generate emotion report" },
+        voice_chat: { error: "Voice chat analysis failed" },
+        transcript: transcriptLogRef.current.join("\n"),
+        final_report: {
+          report: "Analysis completed with errors",
+          timestamp: new Date().toISOString(),
+        },
+      };
+    }
   };
 
   const endSession = async (isManual: boolean = false) => {
@@ -424,9 +518,11 @@ const DiagnosisSection: React.FC = () => {
           body: JSON.stringify({ transcript: transcriptLogRef.current.join("\n") }),
         });
 
-        const aggregatedResults = aggregateResults();
-        setSessionResults(aggregatedResults);
+        const aggregatedResults = await aggregateResults();
+        console.log(`[Session] Aggregated results before /start-session:`, JSON.stringify(aggregatedResults, null, 2));
 
+        console.log("[Session] Sending gaze_data to /start-session:", JSON.stringify(gazeResults, null, 2));
+        console.log("[Session] Sending emotion_data to /start-session:", JSON.stringify(emotionResults, null, 2));
         const res = await fetch("http://127.0.0.1:8003/start-session", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -438,12 +534,26 @@ const DiagnosisSection: React.FC = () => {
           }),
         });
 
-        if (!res.ok) throw new Error(await res.text());
+        if (!res.ok) {
+          const errorText = await res.text();
+          console.error("[Session] /start-session error:", errorText);
+          throw new Error(errorText);
+        }
         const data: SessionResults = await res.json();
+        console.log("[Session] /start-session raw response:", JSON.stringify(data, null, 2));
+
+        // If /start-session returns no gaze data, fall back to aggregatedResults
+        if (data.gaze_tracking.error || !data.gaze_tracking.summary) {
+          console.warn("[Session] /start-session returned no valid gaze data, using aggregatedResults");
+          data.gaze_tracking = aggregatedResults.gaze_tracking;
+        }
+
         setSessionResults(data);
       } catch (err: any) {
-        console.error("Final report error:", err);
+        console.error("[Session] Final report error:", err);
         setError("Failed to generate final report.");
+        const aggregatedResults = await aggregateResults();
+        setSessionResults(aggregatedResults);
       } finally {
         setIsLoading(false);
       }
