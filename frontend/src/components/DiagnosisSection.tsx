@@ -16,16 +16,30 @@ interface APIMessage {
   content: string;
 }
 
+interface GazeTrackingResult {
+  session_id?: string;
+  timestamp?: string;
+  eye_count?: number;
+  gaze_points?: {x: number, y: number}[];
+  error?: string;
+  details?: string;
+  data?: any;
+}
+
+interface EmotionRecognitionResult {
+  session_id?: string;
+  summary?: string;
+  stats?: string;
+  interpretation?: string;
+  error?: string;
+  details?: string;
+  data?: any;
+}
+
 interface SessionResults {
   session_id: string;
-  gaze_tracking: { report?: string; error?: string };
-  emotion_recognition: {
-    session_id?: string;
-    summary?: string;
-    stats?: string;
-    interpretation?: string;
-    error?: string;
-  };
+  gaze_tracking: GazeTrackingResult;
+  emotion_recognition: EmotionRecognitionResult;
   voice_chat: { reply?: string; error?: string };
   transcript: string;
   final_report: { report: string; timestamp: string };
@@ -42,6 +56,8 @@ const DiagnosisSection: React.FC = () => {
   const [error, setError] = useState<string | null>(null);
   const [isListening, setIsListening] = useState<boolean>(false);
   const [isSpeaking, setIsSpeaking] = useState<boolean>(false);
+  const [gazeResults, setGazeResults] = useState<GazeTrackingResult[]>([]);
+  const [emotionResults, setEmotionResults] = useState<EmotionRecognitionResult[]>([]);
 
   const webcamRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -77,13 +93,11 @@ const DiagnosisSection: React.FC = () => {
     try {
       setIsSpeaking(true);
 
-      // 1️⃣ Always stop recognition before playback
       if (recognitionRef.current) {
         console.log("[TTS] stopping recognition before playback");
         recognitionRef.current.stop();
       }
 
-      // 2️⃣ Fetch the WAV from your backend
       const res = await fetch("http://127.0.0.1:8002/tts", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -94,14 +108,12 @@ const DiagnosisSection: React.FC = () => {
       const blob = await res.blob();
       const url = URL.createObjectURL(blob);
 
-      // 3️⃣ Play the audio and only resolve when it ends
       await new Promise<void>((resolve, reject) => {
         const audio = new Audio(url);
         audio.onended = () => {
           console.log("[TTS] playback ended");
           setIsSpeaking(false);
 
-          // 4️⃣ Restart recognition now that TTS is done
           if (
             recognitionRef.current &&
             isRecordingRef.current &&
@@ -131,29 +143,75 @@ const DiagnosisSection: React.FC = () => {
 
   const sendFrameToBackend = async () => {
     if (!webcamRef.current || !canvasRef.current || !isRecording || sessionEnded) return;
-    const ctx = canvasRef.current.getContext("2d");
-    if (!ctx) return;
-    ctx.drawImage(webcamRef.current, 0, 0, canvasRef.current.width, canvasRef.current.height);
-    const frame = canvasRef.current.toDataURL("image/jpeg", 0.8);
-    const payload = { frame, session_id: sessionIdRef.current };
-
+    
     try {
-      await Promise.all([
+      const ctx = canvasRef.current.getContext("2d");
+      if (!ctx) return;
+      
+      ctx.drawImage(webcamRef.current, 0, 0, canvasRef.current.width, canvasRef.current.height);
+      const frame = canvasRef.current.toDataURL("image/jpeg", 0.8);
+      const payload = { frame, session_id: sessionIdRef.current };
+
+      // Create controller for timeout
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 5000);
+
+      // Send requests with proper error handling
+      const [gazeRes, emotionRes] = await Promise.allSettled([
         fetch("http://127.0.0.1:8001/capture-eye-tracking", {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
+          headers: { 
+            "Content-Type": "application/json",
+            "Accept": "application/json"
+          },
           body: JSON.stringify(payload),
+          signal: controller.signal
         }),
         fetch("http://127.0.0.1:8000/analyze-live-emotion", {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
+          headers: { 
+            "Content-Type": "application/json",
+            "Accept": "application/json"
+          },
           body: JSON.stringify(payload),
-        }),
+          signal: controller.signal
+        })
       ]);
+
+      clearTimeout(timeoutId);
+
+      // Process gaze response
+      if (gazeRes.status === "fulfilled" && gazeRes.value.ok) {
+        const gazeData = await gazeRes.value.json();
+        setGazeResults(prev => [...prev, gazeData]);
+      } else {
+        const error = gazeRes.status === "rejected" ? gazeRes.reason : await gazeRes.value.text();
+        console.error("Gaze tracking error:", error);
+        setGazeResults(prev => [...prev, {
+          error: "Gaze tracking failed",
+          details: typeof error === 'string' ? error : 'Unknown error',
+          session_id: sessionIdRef.current
+        }]);
+      }
+
+      // Process emotion response
+      if (emotionRes.status === "fulfilled" && emotionRes.value.ok) {
+        const emotionData = await emotionRes.value.json();
+        setEmotionResults(prev => [...prev, emotionData]);
+      } else {
+        const error = emotionRes.status === "rejected" ? emotionRes.reason : await emotionRes.value.text();
+        console.error("Emotion recognition error:", error);
+        setEmotionResults(prev => [...prev, {
+          error: "Emotion recognition failed",
+          details: typeof error === 'string' ? error : 'Unknown error',
+          session_id: sessionIdRef.current
+        }]);
+      }
+
     } catch (err) {
-      console.error("Frame send error:", err);
+      console.error("Frame processing error:", err);
+      setError(`Error processing frame: ${err instanceof Error ? err.message : 'Unknown error'}`);
     }
-    console.log("[Frame] Sending frame to backend", sessionIdRef.current);
   };
 
   useEffect(() => {
@@ -188,7 +246,6 @@ const DiagnosisSection: React.FC = () => {
     rec.onend = () => {
       console.log("[SpeechRec] onend");
       setIsListening(false);
-      // if still recording and not speaking, restart
       if (isRecordingRef.current && !isSpeakingRef.current) {
         console.log("[SpeechRec] restarting on end");
         rec.start();
@@ -198,7 +255,6 @@ const DiagnosisSection: React.FC = () => {
     rec.onerror = (e: any) => {
       console.error("[SpeechRec] onerror:", e.error);
       setIsListening(false);
-      // on no-speech error, restart if session still active
       if (
         e.error === "no-speech" &&
         isRecordingRef.current &&
@@ -214,14 +270,12 @@ const DiagnosisSection: React.FC = () => {
       const transcript = e.results[e.results.length - 1][0].transcript.trim();
       console.log("[SpeechRec] raw transcript:", transcript);
 
-      // dedupe: skip if same as last result
       if (transcript === lastTranscriptRef.current) {
         console.log("[SpeechRec] duplicate transcript, ignoring");
         return;
       }
       lastTranscriptRef.current = transcript;
 
-      // guard with your ref‐state
       if (
         !isRecordingRef.current ||
         sessionEndedRef.current ||
@@ -235,7 +289,6 @@ const DiagnosisSection: React.FC = () => {
         return;
       }
 
-      // ignore echoes of AI's last line
       if (
         lastAIMessageRef.current &&
         transcript
@@ -246,13 +299,11 @@ const DiagnosisSection: React.FC = () => {
         return;
       }
 
-      // finally, dispatch to your handler
       console.log("[SpeechRec] dispatching to handleUserMessage()");
       handleUserMessage(transcript);
     };
 
     recognitionRef.current = rec;
-    // start listening immediately once mounted
     rec.start();
 
     return () => {
@@ -263,8 +314,9 @@ const DiagnosisSection: React.FC = () => {
 
   const startSession = async () => {
     setError(null);
+    setGazeResults([]);
+    setEmotionResults([]);
     try {
-      // start media
       const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
       streamRef.current = stream;
       if (webcamRef.current) webcamRef.current.srcObject = stream;
@@ -276,13 +328,11 @@ const DiagnosisSection: React.FC = () => {
       transcriptLogRef.current = [];
       messagesRef.current = [{ role: "system", content: SYSTEM_PROMPT }];
 
-      // Initial AI prompt
       const initial = "Hello… How are you feeling today?";
       setConversation([{ sender: "ai", text: initial, timestamp: new Date() }]);
       messagesRef.current.push({ role: "assistant", content: initial });
       lastAIMessageRef.current = initial;
 
-      // Play it, then *immediately* start recognition
       await playBackendTTS(initial);
       console.log("[Session] initial TTS done, starting recognition");
     } catch (err: any) {
@@ -306,7 +356,6 @@ const DiagnosisSection: React.FC = () => {
     transcriptLogRef.current.push(`User: ${userMessage}`);
     messagesRef.current.push({ role: "user", content: userMessage });
 
-    // Call chat API
     try {
       console.log("[App] sending /chat with payload:", messagesRef.current);
       setIsLoading(true);
@@ -333,7 +382,6 @@ const DiagnosisSection: React.FC = () => {
       messagesRef.current.push({ role: "assistant", content: assistantReply });
       lastAIMessageRef.current = assistantReply;
 
-      // play and auto‐restart recognition
       await playBackendTTS(assistantReply);
     } catch (err: any) {
       console.error("[App] handleUserMessage() error:", err);
@@ -343,8 +391,37 @@ const DiagnosisSection: React.FC = () => {
     }
   };
 
+  const aggregateResults = (): SessionResults => {
+    // Get the most recent successful gaze and emotion results
+    const lastGaze = [...gazeResults].reverse().find(r => !r.error) || 
+      { error: "No valid gaze data collected" };
+    const lastEmotion = [...emotionResults].reverse().find(r => !r.error) || 
+      { error: "No valid emotion data collected" };
+
+    return {
+      session_id: sessionIdRef.current,
+      gaze_tracking: lastGaze.error ? lastGaze : {
+        report: `Eye tracking analysis (${lastGaze.eye_count || 0} eyes detected)`,
+        session_id: lastGaze.session_id,
+        data: lastGaze
+      },
+      emotion_recognition: lastEmotion.error ? lastEmotion : {
+        summary: lastEmotion.summary,
+        stats: lastEmotion.stats,
+        interpretation: lastEmotion.interpretation,
+        session_id: lastEmotion.session_id,
+        data: lastEmotion
+      },
+      voice_chat: { reply: "Completed" },
+      transcript: transcriptLogRef.current.join("\n"),
+      final_report: {
+        report: "Analysis completed",
+        timestamp: new Date().toISOString()
+      }
+    };
+  };
+
   const endSession = async (isManual: boolean = false) => {
-    // stop everything
     mediaRecorderRef.current?.state !== "inactive" && mediaRecorderRef.current?.stop();
     streamRef.current?.getTracks().forEach((t) => t.stop());
     recognitionRef.current?.stop();
@@ -353,7 +430,6 @@ const DiagnosisSection: React.FC = () => {
     setIsRecording(false);
     setSessionEnded(true);
 
-    // upload transcript if manual
     if (isManual && transcriptLogRef.current.length) {
       try {
         await fetch("http://127.0.0.1:8002/upload_transcript", {
@@ -361,23 +437,21 @@ const DiagnosisSection: React.FC = () => {
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ transcript: transcriptLogRef.current.join("\n") }),
         });
-      } catch (err) {
-        console.error("Upload transcript error:", err);
-      }
-    }
 
-    // request final report
-    if (isManual) {
-      setIsLoading(true);
-      try {
+        const aggregatedResults = aggregateResults();
+        setSessionResults(aggregatedResults);
+
         const res = await fetch("http://127.0.0.1:8003/start-session", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             messages: messagesRef.current.slice(0, 5),
             is_post_session: true,
+            gaze_data: gazeResults,
+            emotion_data: emotionResults
           }),
         });
+        
         if (!res.ok) throw new Error(await res.text());
         const data: SessionResults = await res.json();
         setSessionResults(data);
@@ -405,7 +479,6 @@ const DiagnosisSection: React.FC = () => {
     <section id="diagnosis" className="py-24 bg-gradient-to-b from-white to-psyche-gray-light">
       <div className="container mx-auto px-4">
         <div className="grid grid-cols-1 lg:grid-cols-5 gap-8">
-          {/* Left panel */}
           <div className="lg:col-span-2 flex flex-col">
             <Card className="flex-1">
               <CardContent className="p-0 relative h-full flex flex-col">
@@ -431,9 +504,7 @@ const DiagnosisSection: React.FC = () => {
             />
           </div>
 
-          {/* Conversation panel */}
           <div className="lg:col-span-3 flex flex-col">
-            {/* status bar */}
             <div className="mb-4 flex items-center justify-between">
               <h3 className="text-xl font-medium">Live Conversation</h3>
             </div>
@@ -453,7 +524,6 @@ const DiagnosisSection: React.FC = () => {
             )}
           </div>
 
-          {/* Results panel */}
           {sessionEnded && sessionResults && (
             <div className="lg:col-span-5 flex justify-center">
               <div className="w-full max-w-4xl">

@@ -1,116 +1,105 @@
-import datetime
-import logging
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
-import subprocess
-import sys
-import os
+import uvicorn
 import cv2
 import numpy as np
 import base64
+from datetime import datetime
+import logging
 
-logger = logging.getLogger("gaze-api")
-logging.basicConfig(level=logging.INFO)
+# Set up logging
+logging.basicConfig(level=logging.DEBUG)
+logger = logging.getLogger(__name__)
 
 app = FastAPI()
 
-# CORS configuration
+# Configure CORS
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:8080", "http://localhost:3000", "*"],
+    allow_origins=["http://localhost:8080", "http://127.0.0.1:8080"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-CSV_FILE = "eye_tracking_data_media.csv"
-
-class VideoFrame(BaseModel):
-    frame: str  # Base64-encoded frame
+class EyeTrackingRequest(BaseModel):
+    frame: str
     session_id: str
 
-def process_frame_for_gaze(frame: np.ndarray, session_id: str) -> dict:
-    """
-    Placeholder for gaze tracking logic (adapt from eye_tracking.py).
-    """
-    try:
-        logger.info(f"[{session_id}] Processing frame, shape: {frame.shape}")
-        # Save frame for debugging
-        debug_path = f"debug_gaze_frame_{session_id}.jpg"
-        cv2.imwrite(debug_path, frame)
-        logger.info(f"[{session_id}] Saved debug frame to {debug_path}")
-
-        # Placeholder logic (replace with eye_tracking.py)
-        gaze_points = []
-        timestamp = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        gaze_data = {
-            "timestamp": timestamp,
-            "session_id": session_id,
-            "gaze_points": gaze_points
-        }
-        # Append to CSV
-        if not os.path.exists(CSV_FILE):
-            with open(CSV_FILE, "w") as f:
-                f.write("timestamp,session_id,gaze_points\n")
-        with open(CSV_FILE, "a") as f:
-            f.write(f"{timestamp},{session_id},{gaze_points}\n")
-        return gaze_data
-    except Exception as e:
-        logger.error(f"[{session_id}] Error processing frame: {str(e)}")
-        raise
+def ensure_serializable(obj):
+    """Recursively convert NumPy types to Python types."""
+    if isinstance(obj, np.integer):
+        return int(obj)
+    elif isinstance(obj, np.floating):
+        return float(obj)
+    elif isinstance(obj, np.ndarray):
+        return obj.tolist()
+    elif isinstance(obj, list):
+        return [ensure_serializable(item) for item in obj]
+    elif isinstance(obj, dict):
+        return {key: ensure_serializable(value) for key, value in obj.items()}
+    return obj
 
 @app.post("/capture-eye-tracking")
-async def capture_eye_tracking(video_frame: VideoFrame):
-    session_id = video_frame.session_id or datetime.datetime.now().strftime("%Y%m%d%H%M%S")
+async def capture_eye_tracking(request: EyeTrackingRequest):
     try:
-        logger.info(f"[{session_id}] Received /capture-eye-tracking request")
-        # Decode base64 frame
-        frame_data = base64.b64decode(video_frame.frame.split(",")[1])
+        # Decode base64 image
+        if not request.frame.startswith("data:image/jpeg;base64,"):
+            raise HTTPException(status_code=400, detail="Invalid image format")
+        frame_data = base64.b64decode(request.frame.split(",")[1])
         nparr = np.frombuffer(frame_data, np.uint8)
         frame = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
+        
         if frame is None:
-            logger.error(f"[{session_id}] Failed to decode frame")
-            raise ValueError("Failed to decode frame")
-
-        # Process frame
-        gaze_data = process_frame_for_gaze(frame, session_id)
-        logger.info(f"[{session_id}] Eye tracking completed")
-        return {
-            "message": "✅ Eye tracking data captured",
-            "session_id": session_id,
-            "gaze_points": gaze_data["gaze_points"]
+            raise HTTPException(status_code=400, detail="Failed to decode image data")
+        
+        # Placeholder eye-tracking logic (replace with actual implementation)
+        eye_cascade = cv2.CascadeClassifier(cv2.data.haarcascades + "haarcascade_eye.xml")
+        if eye_cascade.empty():
+            raise HTTPException(status_code=500, detail="Failed to load eye cascade classifier")
+        
+        gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+        eyes = eye_cascade.detectMultiScale(gray, scaleFactor=1.1, minNeighbors=5, minSize=(30, 30))
+        
+        # Convert eye count to Python int
+        eye_count = int(len(eyes))
+        
+        # Generate gaze points
+        gaze_points = []
+        for (x, y, w, h) in eyes:
+            gaze_points.append({"x": int(x + w / 2), "y": int(y + h / 2)})
+        
+        # Prepare response
+        response = {
+            "session_id": request.session_id,
+            "timestamp": datetime.now().isoformat(),
+            "eye_count": eye_count,
+            "gaze_points": gaze_points,
+            "data": {
+                "processed": True,
+                "frame_shape": [int(dim) for dim in frame.shape]
+            }
         }
+        
+        # Log response for debugging
+        logger.debug("Response before serialization: %s", response)
+        
+        # Ensure all fields are serializable
+        serializable_response = ensure_serializable(response)
+        
+        # Log serialized response
+        logger.debug("Serialized response: %s", serializable_response)
+        
+        return serializable_response
+        
     except Exception as e:
-        logger.error(f"[{session_id}] Eye tracking failed: {str(e)}")
-        raise HTTPException(status_code=500, detail={
-            "error": "Capture failed",
-            "details": str(e),
-            "session_id": session_id
-        })
-
-@app.get("/generate-eye-tracking-report")
-async def generate_report():
-    if not os.path.exists(CSV_FILE):
-        return {"error": "❌ CSV file not found. Run /capture-eye-tracking first."}
-
-    try:
-        result = subprocess.run(
-            [sys.executable, "report.py"],
-            capture_output=True,
-            text=True,
-            check=True
+        logger.error("Error in capture_eye_tracking: %s", str(e), exc_info=True)
+        raise HTTPException(
+            status_code=500,
+            detail=f"Eye tracking error: {str(e)}",
+            headers={"Access-Control-Allow-Origin": "*"}
         )
-        output = result.stdout.strip()
-        return {"report": output}
-    except subprocess.CalledProcessError as e:
-        return {
-            "error": "❌ Report generation failed.",
-            "details": e.stderr if e.stderr else str(e)
-        }
-    except Exception as e:
-        return {"error": f"❌ Unexpected error: {str(e)}"}
 
 if __name__ == "__main__":
-    import uvicorn
-    uvicorn.run("main:app", host="0.0.0.0", port=8001, reload=True)
+    uvicorn.run(app, host="0.0.0.0", port=8001)
