@@ -9,12 +9,20 @@ from langchain_community.embeddings import CohereEmbeddings
 from groq import AsyncGroq
 from rich.console import Console
 from ultralytics import YOLO
+from fastapi.middleware.cors import CORSMiddleware
 
 # Load environment variables
 load_dotenv()
 
 # FastAPI app
 app = FastAPI()
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["http://localhost:8080"],  # or ["*"] for testing
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 console = Console()
 
 # Constants

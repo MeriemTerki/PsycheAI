@@ -1,43 +1,36 @@
-
-import React from 'react';
 import { Button } from "@/components/ui/button";
-import { Mic, MicOff } from 'lucide-react';
 
 interface SessionControlsProps {
   isRecording: boolean;
   sessionEnded: boolean;
   onStartSession: () => void;
   onEndSession: () => void;
+  isLoading: boolean;
 }
 
-const SessionControls = ({ 
-  isRecording, 
-  sessionEnded, 
-  onStartSession, 
-  onEndSession 
-}: SessionControlsProps) => {
+const SessionControls: React.FC<SessionControlsProps> = ({
+  isRecording,
+  sessionEnded,
+  onStartSession,
+  onEndSession,
+  isLoading,
+}) => {
   return (
-    <div className="mt-6 flex flex-col gap-4">
-      {!isRecording ? (
-        <Button 
-          disabled={sessionEnded}
-          size="lg" 
-          onClick={onStartSession}
-          className="bg-psyche-purple hover:bg-psyche-purple-dark text-white transition-colors"
-        >
-          <Mic className="mr-2 h-5 w-5" />
-          Start Diagnosis Session
-        </Button>
-      ) : (
-        <Button 
-          size="lg" 
-          variant="destructive" 
-          onClick={onEndSession}
-        >
-          <MicOff className="mr-2 h-5 w-5" />
-          End Session
-        </Button>
-      )}
+    <div className="mt-4 flex gap-4">
+      <Button
+        onClick={onStartSession}
+        disabled={isRecording || sessionEnded || isLoading}
+        className="bg-psyche-purple hover:bg-psyche-purple-dark text-white"
+      >
+        {isLoading ? "Starting..." : "Start Session"}
+      </Button>
+      <Button
+        onClick={onEndSession}
+        disabled={!isRecording || isLoading}
+        variant="outline"
+      >
+        End Session
+      </Button>
     </div>
   );
 };

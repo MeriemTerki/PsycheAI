@@ -15,6 +15,7 @@ from pinecone import Pinecone, ServerlessSpec
 from langchain_community.embeddings import CohereEmbeddings
 import os
 from dotenv import load_dotenv
+from datetime import datetime
 
 # Load environment variables from .env file
 load_dotenv()
@@ -23,14 +24,14 @@ SYSTEM_PROMPT = """You are a compassionate, professional mental health assistant
 1. **Listen actively** and respond with empathy, warmth, and non-judgmental support.
 2. **Use the provided context** (therapy Q&A, techniques, or resources) to offer accurate, evidence-based guidance.
 3. **Prioritize safety**: Never diagnose or replace human therapists. For crises (self-harm, abuse), say:
-   "I’m deeply concerned. Please contact [crisis hotline] or your therapist immediately."
+   "I'm deeply concerned. Please contact [crisis hotline] or your therapist immediately."
 4. **Keep responses concise** (1-2 sentences max) for voice interactions, but adjust for complex topics.
 5. **Encourage professional help**: 
    "That sounds really challenging. A therapist could help you explore this further."
 
 Example tone:
 - "I hear how painful this feels. Many people find mindfulness helpful—would you like a short exercise?"
-- "It’s brave of you to share this. The resources I have suggest [context tip]."
+- "It's brave of you to share this. The resources I have suggest [context tip]."
 
 Context to use (if available):
 {context}
@@ -103,8 +104,9 @@ async def get_relevant_context(query: str, top_k: int = 3) -> str:
         console.print(f"Error retrieving context: {e}", style="red")
         return ""
 
-async def assistant_chat(messages, model='llama3-8b-8192'):
+async def assistant_chat(messages, model='llama3-8b-8192', min_duration=3):
     try:
+        start_time = datetime.now()
         # Check if the last message is a user query that might need RAG
         user_query = messages[-1]['content'] if messages[-1]['role'] == 'user' else ""
         
@@ -127,19 +129,36 @@ async def assistant_chat(messages, model='llama3-8b-8192'):
                     temperature=0.7,
                     max_tokens=150
                 )
-                return res.choices[0].message.content
+                response = res.choices[0].message.content
+            else:
+                # Default response without RAG if context is empty
+                res = await groq.chat.completions.create(
+                    messages=messages,
+                    model=model,
+                    temperature=0.7,
+                    max_tokens=150
+                )
+                response = res.choices[0].message.content
+        else:
+            # Default response without RAG
+            res = await groq.chat.completions.create(
+                messages=messages,
+                model=model,
+                temperature=0.7,
+                max_tokens=150
+            )
+            response = res.choices[0].message.content
         
-        # Default response without RAG
-        res = await groq.chat.completions.create(
-            messages=messages,
-            model=model,
-            temperature=0.7,
-            max_tokens=150
-        )
-        return res.choices[0].message.content
+        # Ensure minimum duration
+        elapsed = (datetime.now() - start_time).total_seconds()
+        if elapsed < min_duration:
+            await asyncio.sleep(min_duration - elapsed)
         
+        console.print(f"[{datetime.now().isoformat()}] Assistant chat completed in {elapsed:.2f} seconds", style="green")
+        return response
+    
     except Exception as e:
-        console.print(f"Error in assistant_chat: {e}", style="red")
+        console.print(f"[{datetime.now().isoformat()}] Error in assistant_chat: {e}", style="red")
         return "Sorry, I encountered an error. Could you please repeat that?"
 
 async def transcribe_audio():
@@ -198,13 +217,6 @@ async def transcribe_audio():
     except Exception as e:
         console.print(f'Could not open socket: {e}')
         return None
-
-def should_end_conversation(text):
-    if not text:
-        return False
-    text = text.translate(str.maketrans('', '', string.punctuation))
-    text = text.strip().lower()
-    return re.search(r'\b(goodbye|bye|exit|quit)\b$', text) is not None
 
 def text_to_speech(text):
     try:
@@ -271,12 +283,6 @@ async def run():
                 
             messages.append({'role': 'user', 'content': user_message})
 
-            if should_end_conversation(user_message):
-                goodbye_msg = "Goodbye! Have a great day!"
-                console.print(goodbye_msg, style="dark_orange")
-                text_to_speech(goodbye_msg)
-                break
-
             if len(messages) > memory_size:
                 messages = [system_message] + messages[-(memory_size-1):]
 
@@ -291,6 +297,27 @@ async def run():
         except Exception as e:
             console.print(f"Unexpected error: {e}", style="red")
             continue
+
+def generate_tts_bytes(text: str) -> bytes:
+    """
+    Call Deepgram TTS and return raw WAV audio bytes.
+    """
+    headers = {
+        'Authorization': f'Token {settings.DEEPGRAM_API_KEY}',
+        'Content-Type': 'application/json'
+    }
+    # ensure proper spacing
+    formatted = text.replace('.', '. ').replace('?', '? ').replace('!', '! ')
+    res = requests.post(
+        DEEPGRAM_TTS_URL,
+        headers=headers,
+        json={'text': formatted},
+        stream=True,
+        timeout=15
+    )
+    if res.status_code != 200:
+        raise RuntimeError(f"TTS API error {res.status_code}: {res.text}")
+    return res.content
 
 def main():
     try:

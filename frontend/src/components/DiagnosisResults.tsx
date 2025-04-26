@@ -2,23 +2,41 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Printer } from "lucide-react";
 
-interface DiagnosisResultsProps {
-  isVisible: boolean;
-  conversation: Array<{
-    sender: 'ai' | 'user';
-    text: string;
-    timestamp: Date;
-  }>;
+interface Message {
+  sender: "ai" | "user";
+  text: string;
+  timestamp: Date;
 }
 
-const DiagnosisResults = ({ isVisible, conversation }: DiagnosisResultsProps) => {
+interface SessionResults {
+  session_id: string;
+  gaze_tracking: { report?: string; error?: string };
+  emotion_recognition: {
+    session_id?: string;
+    summary?: string;
+    stats?: string;
+    interpretation?: string;
+    error?: string;
+  };
+  voice_chat: { reply?: string; error?: string };
+  transcript: string;
+  final_report: { report: string; timestamp: string };
+}
+
+interface DiagnosisResultsProps {
+  isVisible: boolean;
+  conversation: Message[];
+  sessionResults: SessionResults;
+}
+
+const DiagnosisResults: React.FC<DiagnosisResultsProps> = ({ isVisible, conversation, sessionResults }) => {
   const handlePrintReport = () => {
-    const printWindow = window.open('', '_blank');
+    const printWindow = window.open("", "_blank");
     if (!printWindow) return;
 
     const formattedConversation = conversation
-      .map(msg => `${msg.sender === 'ai' ? 'AI' : 'Patient'}: ${msg.text}`)
-      .join('\n\n');
+      .map((msg) => `${msg.sender === "ai" ? "AI" : "Patient"}: ${msg.text}`)
+      .join("\n\n");
 
     const content = `
       <html>
@@ -26,9 +44,10 @@ const DiagnosisResults = ({ isVisible, conversation }: DiagnosisResultsProps) =>
           <title>Psychology Diagnosis Report</title>
           <style>
             body { font-family: Arial, sans-serif; line-height: 1.6; padding: 20px; }
-            h1 { color: #7E69AB; }
+            h1, h2 { color: #7E69AB; }
             .section { margin-bottom: 20px; }
             .timestamp { color: #666; font-size: 0.9em; }
+            pre { white-space: pre-wrap; }
           </style>
         </head>
         <body>
@@ -36,17 +55,25 @@ const DiagnosisResults = ({ isVisible, conversation }: DiagnosisResultsProps) =>
           <div class="section">
             <h2>Session Summary</h2>
             <p>Date: ${new Date().toLocaleDateString()}</p>
-            <p>Duration: ${conversation.length > 0 ? 
-              Math.round((conversation[conversation.length - 1].timestamp.getTime() - 
-              conversation[0].timestamp.getTime()) / 60000) : 0} minutes</p>
+            <p>Session ID: ${sessionResults?.session_id || "N/A"}</p>
+          </div>
+          <div class="section">
+            <h2>Gaze Tracking Analysis</h2>
+            <p>${sessionResults?.gaze_tracking?.report || sessionResults?.gaze_tracking?.error || "Data unavailable"}</p>
+          </div>
+          <div class="section">
+            <h2>Emotion Recognition Analysis</h2>
+            <p><strong>Summary:</strong> ${sessionResults?.emotion_recognition?.summary || sessionResults?.emotion_recognition?.error || "Data unavailable"}</p>
+            <p><strong>Statistics:</strong> ${sessionResults?.emotion_recognition?.stats || "Data unavailable"}</p>
+            <p><strong>Interpretation:</strong> ${sessionResults?.emotion_recognition?.interpretation || "Data unavailable"}</p>
           </div>
           <div class="section">
             <h2>Conversation Transcript</h2>
             <pre>${formattedConversation}</pre>
           </div>
           <div class="section">
-            <h2>Preliminary Assessment</h2>
-            <p>This is an AI-assisted preliminary assessment and should be reviewed by a healthcare professional.</p>
+            <h2>Comprehensive Assessment</h2>
+            <pre>${sessionResults?.final_report?.report || "Report generation failed"}</pre>
           </div>
         </body>
       </html>
@@ -58,12 +85,12 @@ const DiagnosisResults = ({ isVisible, conversation }: DiagnosisResultsProps) =>
   };
 
   const handlePrintTranscript = () => {
-    const printWindow = window.open('', '_blank');
+    const printWindow = window.open("", "_blank");
     if (!printWindow) return;
 
     const formattedConversation = conversation
-      .map(msg => `[${msg.timestamp.toLocaleTimeString()}] ${msg.sender === 'ai' ? 'AI' : 'Patient'}: ${msg.text}`)
-      .join('\n\n');
+      .map((msg) => `[${msg.timestamp.toLocaleTimeString()}] ${msg.sender === "ai" ? "AI" : "Patient"}: ${msg.text}`)
+      .join("\n\n");
 
     const content = `
       <html>
@@ -89,7 +116,9 @@ const DiagnosisResults = ({ isVisible, conversation }: DiagnosisResultsProps) =>
     printWindow.print();
   };
 
-  if (!isVisible) return null;
+  if (!isVisible || !sessionResults) return null;
+
+  console.log("[DiagnosisResults] sessionResults:", sessionResults); // for debugging
 
   return (
     <div className="mt-8 animate-fade-in">
@@ -122,20 +151,40 @@ const DiagnosisResults = ({ isVisible, conversation }: DiagnosisResultsProps) =>
         <CardContent>
           <div className="space-y-6">
             <div>
-              <h3 className="font-medium mb-2">Preliminary Assessment</h3>
+              <h3 className="font-medium mb-2">Session Summary</h3>
+              <p className="text-gray-600">Session ID: {sessionResults.session_id}</p>
+              <p className="text-gray-600">Date: {new Date().toLocaleDateString()}</p>
+            </div>
+            <div>
+              <h3 className="font-medium mb-2">Gaze Tracking Analysis</h3>
               <p className="text-gray-600">
-                Based on the conversation analysis, there are indicators of mild anxiety
-                and stress. Further professional evaluation is recommended.
+                {sessionResults.gaze_tracking?.report ||
+                 sessionResults.gaze_tracking?.error ||
+                 "Data unavailable"}
               </p>
             </div>
             <div>
-              <h3 className="font-medium mb-2">Recommended Treatment Approach</h3>
-              <ul className="list-disc list-inside space-y-2 text-gray-600">
-                <li>Consider cognitive behavioral therapy sessions</li>
-                <li>Practice stress management techniques</li>
-                <li>Maintain regular sleep schedule</li>
-                <li>Schedule a follow-up with a mental health professional</li>
-              </ul>
+              <h3 className="font-medium mb-2">Emotion Recognition Analysis</h3>
+              <p className="text-gray-600">
+                <strong>Summary:</strong>{" "}
+                {sessionResults.emotion_recognition?.summary ||
+                 sessionResults.emotion_recognition?.error ||
+                 "Data unavailable"}
+              </p>
+              <p className="text-gray-600">
+                <strong>Statistics:</strong>{" "}
+                {sessionResults.emotion_recognition?.stats || "Data unavailable"}
+              </p>
+              <p className="text-gray-600">
+                <strong>Interpretation:</strong>{" "}
+                {sessionResults.emotion_recognition?.interpretation || "Data unavailable"}
+              </p>
+            </div>
+            <div>
+              <h3 className="font-medium mb-2">Comprehensive Assessment</h3>
+              <pre className="text-gray-600 whitespace-pre-wrap">
+                {sessionResults.final_report?.report || "Report generation failed"}
+              </pre>
             </div>
           </div>
         </CardContent>
