@@ -13,38 +13,40 @@ from groq import Groq
 
 load_dotenv()
 
-# ─── Logging ───────────────────────────────────────────────────────────────
+# Logging
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 logger = logging.getLogger(__name__)
 
-# ─── FastAPI App ───────────────────────────────────────────────────────────
+# FastAPI App
 app = FastAPI(
     title="Unified Mental Health Assessment API",
-    description="Orchestrates gaze tracking, emotion recognition, voice chat and final report generation",
+    description="Orchestrates gaze tracking, emotion recognition, voice chat, and final report generation",
 )
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[os.getenv("FRONTEND_ORIGINS", "*")],
+    allow_origins=[os.getenv("FRONTEND_ORIGINS", "http://localhost:8080")],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-# ─── Configuration ─────────────────────────────────────────────────────────
-GAZE_CAPTURE_URL    = os.getenv("GAZE_CAPTURE_URL",    "http://127.0.0.1:8001/capture-eye-tracking")
-GAZE_REPORT_URL     = os.getenv("GAZE_REPORT_URL",     "http://127.0.0.1:8001/generate-eye-tracking-report")
-EMOTION_API_URL     = os.getenv("EMOTION_API_URL",     "http://127.0.0.1:8000/analyze-live-emotion")
-CHAT_API_URL        = os.getenv("CHAT_API_URL",        "http://127.0.0.1:8002/chat")
-TRANSCRIPT_GET_URL  = os.getenv("TRANSCRIPT_GET_URL",  "http://127.0.0.1:8002/transcript")
-GROQ_API_KEY        = os.getenv("GROQ_API_KEY")
+# Configuration
+GAZE_CAPTURE_URL = os.getenv("GAZE_CAPTURE_URL", "http://127.0.0.1:8001/capture-eye-tracking")
+GAZE_REPORT_URL = os.getenv("GAZE_REPORT_URL", "http://127.0.0.1:8001/generate-eye-tracking-report")
+EMOTION_API_URL = os.getenv("EMOTION_API_URL", "http://127.0.0.1:8000/analyze-live-emotion")
+CHAT_API_URL = os.getenv("CHAT_API_URL", "http://127.0.0.1:8002/chat")
+TRANSCRIPT_GET_URL = os.getenv("TRANSCRIPT_GET_URL", "http://127.0.0.1:8002/transcript")
+GROQ_API_KEY = os.getenv("GROQ_API_KEY")
 
 groq_client = Groq(api_key=GROQ_API_KEY)
 
-# ─── Pydantic Schemas ──────────────────────────────────────────────────────
+# Pydantic Schemas
 class SessionRequest(BaseModel):
     messages: List[Dict[str, str]] = Field(..., description="Chat history including system prompt")
-    is_post_session: bool = Field(False, description="If true, skip live gaze & emotion")
+    is_post_session: bool = Field(False, description="If true, use provided gaze and emotion data")
+    gaze_data: Optional[List[Dict[str, Any]]] = Field(None, description="Collected gaze tracking data")
+    emotion_data: Optional[List[Dict[str, Any]]] = Field(None, description="Collected emotion recognition data")
 
 class GazeData(BaseModel):
     report: Optional[str] = None
@@ -72,7 +74,7 @@ class SessionResult(BaseModel):
     transcript: str
     final_report: FinalReport
 
-# ─── System Prompt ─────────────────────────────────────────────────────────
+# System Prompt
 REPORT_SYSTEM_PROMPT = """
 You are a psychological data analyst tasked with generating a comprehensive mental health assessment report. Your role is to:
 1. Analyze data from gaze tracking, emotion recognition, and voice conversation transcripts.
@@ -85,7 +87,7 @@ You are a psychological data analyst tasked with generating a comprehensive ment
    - Recommended Treatment: Practical suggestions for mental health support.
 """
 
-# ─── Helpers ────────────────────────────────────────────────────────────────
+# Helpers
 async def generate_final_report(
     gaze_report: str,
     emotion_data: EmotionData,
@@ -98,14 +100,13 @@ async def generate_final_report(
 **Input Data:**
 - **Gaze Tracking Report**: {gaze_report}
 - **Emotion Recognition Data**:
-  - Summary: {emotion_data.summary or ''}
-  - Statistics: {emotion_data.stats or ''}
-  - Interpretation: {emotion_data.interpretation or ''}
+  - Summary: {emotion_data.summary or 'No data available'}
+  - Statistics: {emotion_data.stats or 'No data available'}
+  - Interpretation: {emotion_data.interpretation or 'No data available'}
 - **Conversation Transcript**: {transcript}
 
 Please provide a structured report with Summary, Interpretation, and Recommended Treatment.
 """
-    # retry logic
     retries, delay = 3, 60
     for attempt in range(1, retries + 1):
         try:
@@ -113,7 +114,7 @@ Please provide a structured report with Summary, Interpretation, and Recommended
             resp = groq_client.chat.completions.create(
                 messages=[
                     {"role": "system", "content": REPORT_SYSTEM_PROMPT},
-                    {"role": "user",   "content": prompt}
+                    {"role": "user", "content": prompt}
                 ],
                 model="llama3-8b-8192",
                 temperature=0.7,
@@ -131,35 +132,56 @@ Please provide a structured report with Summary, Interpretation, and Recommended
                 logger.error(f"[{session_id}] Failed to generate report: {e}")
                 return FinalReport(report=f"Error: {e}", timestamp=datetime.utcnow().isoformat())
 
-async def run_session(messages: List[Dict[str, str]], is_post: bool) -> SessionResult:
+async def run_session(messages: List[Dict[str, str]], is_post: bool, gaze_data_input: Optional[List[Dict[str, Any]]], emotion_data_input: Optional[List[Dict[str, Any]]]) -> SessionResult:
     session_id = datetime.utcnow().strftime("%Y%m%d%H%M%S")
     logger.info(f"[{session_id}] Starting session (post={is_post})")
+    logger.debug(f"[{session_id}] Gaze data: {gaze_data_input}")
+    logger.debug(f"[{session_id}] Emotion data: {emotion_data_input}")
 
-    gaze_data    = GazeData(error="Skipped") if is_post else GazeData()
+    gaze_data = GazeData(error="Skipped") if is_post else GazeData()
     emotion_data = EmotionData(error="Skipped") if is_post else EmotionData()
-    chat_data    = ChatData()
-    transcript   = ""
+    chat_data = ChatData()
+    transcript = ""
 
     async with httpx.AsyncClient(timeout=120.0) as client:
         # 1) Gaze
         if not is_post:
             try:
-                r = await client.post(GAZE_CAPTURE_URL, json={"frame": "", "session_id": session_id})
-                gaze_data = GazeData(**(r.json() if r.status_code == 200 else {"error": r.text}))
-                # then fetch report
-                rr = await client.get(GAZE_REPORT_URL)
-                gaze_data.report = rr.json().get("report") if rr.status_code == 200 else f"Error {rr.status_code}"
+                logger.warning(f"[{session_id}] Skipping live gaze capture due to missing frame")
+                gaze_data.error = "Live gaze capture not implemented"
             except Exception as e:
                 logger.error(f"[{session_id}] Gaze error: {e}")
+                gaze_data.error = str(e)
+        elif gaze_data_input:
+            try:
+                r = await client.post(GAZE_REPORT_URL, json={"gaze_data": gaze_data_input, "session_id": session_id})
+                if r.status_code == 200:
+                    gaze_data = GazeData(report=r.json().get("report"))
+                else:
+                    gaze_data.error = f"Report generation failed: {r.text}"
+                    logger.error(f"[{session_id}] Gaze report error: {r.text}")
+            except Exception as e:
+                logger.error(f"[{session_id}] Gaze report error: {e}")
                 gaze_data.error = str(e)
 
         # 2) Emotion
         if not is_post:
             try:
-                r = await client.post(EMOTION_API_URL, json={"frame": "", "session_id": session_id})
-                emotion_data = EmotionData(**(r.json() if r.status_code == 200 else {"error": r.text}))
+                logger.warning(f"[{session_id}] Skipping live emotion capture due to missing frame")
+                emotion_data.error = "Live emotion capture not implemented"
             except Exception as e:
                 logger.error(f"[{session_id}] Emotion error: {e}")
+                emotion_data.error = str(e)
+        elif emotion_data_input:
+            try:
+                latest_emotion = emotion_data_input[-1] if emotion_data_input else {}
+                emotion_data = EmotionData(
+                    summary=latest_emotion.get("summary", "No data"),
+                    stats=latest_emotion.get("stats", "No data"),
+                    interpretation=latest_emotion.get("interpretation", "No data")
+                )
+            except Exception as e:
+                logger.error(f"[{session_id}] Emotion data processing error: {e}")
                 emotion_data.error = str(e)
 
         # 3) Chat
@@ -179,7 +201,7 @@ async def run_session(messages: List[Dict[str, str]], is_post: bool) -> SessionR
             transcript = ""
 
     final_report = await generate_final_report(
-        gaze_report=gaze_data.report or "",
+        gaze_report=gaze_data.report or "No gaze data available",
         emotion_data=emotion_data,
         transcript=transcript
     )
@@ -194,11 +216,12 @@ async def run_session(messages: List[Dict[str, str]], is_post: bool) -> SessionR
         final_report=final_report
     )
 
-# ─── Routes ────────────────────────────────────────────────────────────────
+# Routes
 @app.post("/start-session", response_model=SessionResult)
 async def start_session(req: SessionRequest):
     try:
-        result = await run_session(req.messages, req.is_post_session)
+        logger.info("Received /start-session request with payload: %s", req.dict())
+        result = await run_session(req.messages, req.is_post_session, req.gaze_data, req.emotion_data)
         return result
     except HTTPException:
         raise

@@ -1,16 +1,15 @@
 import os
-import pandas as pd
 from dotenv import load_dotenv
 from pinecone import Pinecone
 from langchain_community.embeddings import CohereEmbeddings
 from groq import AsyncGroq
 from rich.console import Console
+from typing import List, Dict, Any
 
 # Load env variables
 load_dotenv()
 
 # Settings
-CSV_PATH = "eye_tracking_data_media.csv"
 SYSTEM_PROMPT = """
 You are a psychological data analyst. Your job is to:
 1. Use evidence-based insights from psychology research to interpret eye-tracking data.
@@ -34,46 +33,44 @@ embeddings = CohereEmbeddings(
     user_agent="eye-tracking-app"
 )
 
-# Step 1: Load CSV
-def load_eye_tracking_data():
-    return pd.read_csv(CSV_PATH)
+# Summarize gaze data
+def summarize_gaze_data(gaze_data: List[Dict[str, Any]]) -> str:
+    if not gaze_data:
+        return "No gaze data available."
+    
+    eye_counts = [d.get("eye_count", 0) for d in gaze_data]
+    gaze_points = [p for d in gaze_data for p in d.get("gaze_points", [])]
+    
+    summary = f"""
+Gaze Data Summary:
+- Total frames processed: {len(gaze_data)}
+- Average eyes detected per frame: {sum(eye_counts) / len(eye_counts):.2f} if eye_counts else 0
+- Total gaze points: {len(gaze_points)}
+- Sample gaze points: {gaze_points[:3] if gaze_points else 'None'}
+"""
+    return summary.strip()
 
-# Step 2: Summarize the data
-def summarize_csv(df):
-    summary = f"The dataset contains {len(df)} rows and {len(df.columns)} columns:\n"
-    summary += f"Columns: {', '.join(df.columns)}\n\n"
-    summary += "Sample data:\n"
-    summary += df.head(5).to_string()
-    return summary
-
-# Step 2.5: Analyze data numerically
-def analyze_eye_tracking_data(df):
+# Analyze gaze data
+def analyze_gaze_data(gaze_data: List[Dict[str, Any]]) -> str:
+    if not gaze_data:
+        return "No analysis possible due to missing data."
+    
+    eye_counts = [d.get("eye_count", 0) for d in gaze_data]
+    gaze_points = [p for d in gaze_data for p in d.get("gaze_points", [])]
+    
     analysis = []
-
-    if 'fixation_duration' in df.columns:
-        avg_fix = df['fixation_duration'].mean()
-        analysis.append(f"- Average fixation duration: {avg_fix:.2f} ms")
-
-    if 'blink_rate' in df.columns:
-        avg_blink = df['blink_rate'].mean()
-        analysis.append(f"- Average blink rate: {avg_blink:.2f} blinks/sec")
-
-    if 'pupil_dilation' in df.columns:
-        avg_pupil = df['pupil_dilation'].mean()
-        analysis.append(f"- Average pupil dilation: {avg_pupil:.2f}")
-
-    if 'ear_value' in df.columns:
-        avg_ear = df['ear_value'].mean()
-        analysis.append(f"- Average EAR (Eye Activity Ratio): {avg_ear:.2f}")
-
-    if 'aoi' in df.columns:
-        top_aois = df['aoi'].value_counts().nlargest(3).to_dict()
-        aois_str = ", ".join(f"{k}: {v} views" for k, v in top_aois.items())
-        analysis.append(f"- Most viewed AOIs: {aois_str}")
-
+    avg_eye_count = sum(eye_counts) / len(eye_counts) if eye_counts else 0
+    analysis.append(f"- Average eye count: {avg_eye_count:.2f}")
+    analysis.append(f"- Total gaze points: {len(gaze_points)}")
+    
+    if gaze_points:
+        x_coords = [p["x"] for p in gaze_points]
+        y_coords = [p["y"] for p in gaze_points]
+        analysis.append(f"- Gaze point range: X({min(x_coords)}-{max(x_coords)}), Y({min(y_coords)}-{max(y_coords)})")
+    
     return "\n".join(analysis)
 
-# Step 3: Get context using RAG
+# Get RAG context
 async def get_rag_context(query: str, top_k: int = 5) -> str:
     try:
         query_embedding = embeddings.embed_query(query)
@@ -86,7 +83,7 @@ async def get_rag_context(query: str, top_k: int = 5) -> str:
         console.print(f"Error retrieving context: {e}", style="red")
         return ""
 
-# Step 4: Ask Groq for interpretation
+# Interpret with Groq
 async def interpret_with_groq(csv_summary: str, stats_summary: str, rag_context: str, model="llama3-8b-8192") -> str:
     try:
         final_prompt = SYSTEM_PROMPT.format(context=rag_context)
@@ -94,7 +91,7 @@ async def interpret_with_groq(csv_summary: str, stats_summary: str, rag_context:
             {"role": "system", "content": final_prompt},
             {"role": "user", "content": f"""Here is the individual's eye-tracking data summary and analysis:
 
-CSV Summary:
+Data Summary:
 {csv_summary}
 
 Statistical Analysis:
@@ -114,18 +111,19 @@ Focus on attention patterns, emotional arousal, cognitive load, and any behavior
         console.print(f"Error during Groq call: {e}", style="red")
         return "An error occurred while interpreting the data."
 
-# Main async orchestrator
-async def main():
-    df = load_eye_tracking_data()
-    csv_summary = summarize_csv(df)
-    stats_summary = analyze_eye_tracking_data(df)
+# Main function for testing
+async def generate_report(gaze_data: List[Dict[str, Any]]) -> str:
+    csv_summary = summarize_gaze_data(gaze_data)
+    stats_summary = analyze_gaze_data(gaze_data)
     rag_context = await get_rag_context("psychological interpretation of eye-tracking data")
     interpretation = await interpret_with_groq(csv_summary, stats_summary, rag_context)
-    
-    console.print(" [bold magenta]Interpretation:[/bold magenta]\n")
-    console.print(interpretation, style="cyan")
+    return f"{csv_summary}\n\n{stats_summary}\n\n{interpretation}"
 
-# Run the async entry point
 if __name__ == "__main__":
     import asyncio
-    asyncio.run(main())
+    # Test with sample data
+    sample_data = [
+        {"session_id": "test", "eye_count": 2, "gaze_points": [{"x": 100, "y": 100}, {"x": 200, "y": 200}]}
+    ]
+    result = asyncio.run(generate_report(sample_data))
+    console.print(result, style="cyan")

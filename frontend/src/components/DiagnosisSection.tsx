@@ -1,8 +1,5 @@
 import { useState, useRef, useEffect } from "react";
-import { Card, CardContent } from "@/components/ui/card";
-import VideoPreview from "./diagnosis/VideoPreview";
-import ConversationDisplay from "./diagnosis/ConversationDisplay";
-import SessionControls from "./diagnosis/SessionControls";
+import Webcam from "react-webcam";
 import DiagnosisResults from "./DiagnosisResults";
 
 interface Message {
@@ -20,7 +17,7 @@ interface GazeTrackingResult {
   session_id?: string;
   timestamp?: string;
   eye_count?: number;
-  gaze_points?: {x: number, y: number}[];
+  gaze_points?: { x: number; y: number }[];
   error?: string;
   details?: string;
   data?: any;
@@ -59,11 +56,9 @@ const DiagnosisSection: React.FC = () => {
   const [gazeResults, setGazeResults] = useState<GazeTrackingResult[]>([]);
   const [emotionResults, setEmotionResults] = useState<EmotionRecognitionResult[]>([]);
 
-  const webcamRef = useRef<HTMLVideoElement>(null);
+  const webcamRef = useRef<Webcam>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
-  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
-  const streamRef = useRef<MediaStream | null>(null);
-  const recognitionRef = useRef<SpeechRecognition | null>(null);
+  const recognitionRef = useRef<any>(null); // Changed to any to handle browser-specific implementations
   const conversationRef = useRef<HTMLDivElement>(null);
   const transcriptLogRef = useRef<string[]>([]);
   const messagesRef = useRef<APIMessage[]>([{ role: "system", content: SYSTEM_PROMPT }]);
@@ -143,74 +138,71 @@ const DiagnosisSection: React.FC = () => {
 
   const sendFrameToBackend = async () => {
     if (!webcamRef.current || !canvasRef.current || !isRecording || sessionEnded) return;
-    
+
     try {
       const ctx = canvasRef.current.getContext("2d");
-      if (!ctx) return;
-      
-      ctx.drawImage(webcamRef.current, 0, 0, canvasRef.current.width, canvasRef.current.height);
+      if (!ctx || !webcamRef.current.video) return;
+
+      canvasRef.current.width = webcamRef.current.video.videoWidth;
+      canvasRef.current.height = webcamRef.current.video.videoHeight;
+      ctx.drawImage(webcamRef.current.video, 0, 0, canvasRef.current.width, canvasRef.current.height);
       const frame = canvasRef.current.toDataURL("image/jpeg", 0.8);
       const payload = { frame, session_id: sessionIdRef.current };
 
-      // Create controller for timeout
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), 5000);
 
-      // Send requests with proper error handling
       const [gazeRes, emotionRes] = await Promise.allSettled([
         fetch("http://127.0.0.1:8001/capture-eye-tracking", {
           method: "POST",
-          headers: { 
-            "Content-Type": "application/json",
-            "Accept": "application/json"
-          },
+          headers: { "Content-Type": "application/json", "Accept": "application/json" },
           body: JSON.stringify(payload),
-          signal: controller.signal
+          signal: controller.signal,
         }),
         fetch("http://127.0.0.1:8000/analyze-live-emotion", {
           method: "POST",
-          headers: { 
-            "Content-Type": "application/json",
-            "Accept": "application/json"
-          },
+          headers: { "Content-Type": "application/json", "Accept": "application/json" },
           body: JSON.stringify(payload),
-          signal: controller.signal
-        })
+          signal: controller.signal,
+        }),
       ]);
 
       clearTimeout(timeoutId);
 
-      // Process gaze response
       if (gazeRes.status === "fulfilled" && gazeRes.value.ok) {
         const gazeData = await gazeRes.value.json();
-        setGazeResults(prev => [...prev, gazeData]);
+        setGazeResults((prev) => [...prev, gazeData]);
       } else {
         const error = gazeRes.status === "rejected" ? gazeRes.reason : await gazeRes.value.text();
         console.error("Gaze tracking error:", error);
-        setGazeResults(prev => [...prev, {
-          error: "Gaze tracking failed",
-          details: typeof error === 'string' ? error : 'Unknown error',
-          session_id: sessionIdRef.current
-        }]);
+        setGazeResults((prev) => [
+          ...prev,
+          {
+            error: "Gaze tracking failed",
+            details: typeof error === "string" ? error : "Unknown error",
+            session_id: sessionIdRef.current,
+          },
+        ]);
       }
 
-      // Process emotion response
       if (emotionRes.status === "fulfilled" && emotionRes.value.ok) {
         const emotionData = await emotionRes.value.json();
-        setEmotionResults(prev => [...prev, emotionData]);
+        setEmotionResults((prev) => [...prev, emotionData]);
       } else {
-        const error = emotionRes.status === "rejected" ? emotionRes.reason : await emotionRes.value.text();
+        const error = emotionRes.status === "rejected" ? gazeRes.reason : await emotionRes.value.text();
         console.error("Emotion recognition error:", error);
-        setEmotionResults(prev => [...prev, {
-          error: "Emotion recognition failed",
-          details: typeof error === 'string' ? error : 'Unknown error',
-          session_id: sessionIdRef.current
-        }]);
+        setEmotionResults((prev) => [
+          ...prev,
+          {
+            error: "Emotion recognition failed",
+            details: typeof error === "string" ? error : "Unknown error",
+            session_id: sessionIdRef.current,
+          },
+        ]);
       }
-
-    } catch (err) {
+    } catch (err: any) {
       console.error("Frame processing error:", err);
-      setError(`Error processing frame: ${err instanceof Error ? err.message : 'Unknown error'}`);
+      setError(`Error processing frame: ${err.message}`);
     }
   };
 
@@ -225,7 +217,7 @@ const DiagnosisSection: React.FC = () => {
   }, [isRecording, sessionEnded]);
 
   useEffect(() => {
-    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+    const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
     if (!SpeechRecognition) {
       console.error("[SpeechRec] not supported");
       setError("Speech recognition not supported. Please use Chrome.");
@@ -265,7 +257,7 @@ const DiagnosisSection: React.FC = () => {
       }
     };
 
-    rec.onresult = (e: SpeechRecognitionEvent) => {
+    rec.onresult = (e: any) => {
       console.log("[SpeechRec] onresult event");
       const transcript = e.results[e.results.length - 1][0].transcript.trim();
       console.log("[SpeechRec] raw transcript:", transcript);
@@ -316,29 +308,20 @@ const DiagnosisSection: React.FC = () => {
     setError(null);
     setGazeResults([]);
     setEmotionResults([]);
-    try {
-      const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
-      streamRef.current = stream;
-      if (webcamRef.current) webcamRef.current.srcObject = stream;
-      mediaRecorderRef.current = new MediaRecorder(stream);
-      mediaRecorderRef.current.start();
+    setIsRecording(true);
+    setSessionEnded(false);
+    transcriptLogRef.current = [];
+    messagesRef.current = [{ role: "system", content: SYSTEM_PROMPT }];
 
-      setIsRecording(true);
-      setSessionEnded(false);
-      transcriptLogRef.current = [];
-      messagesRef.current = [{ role: "system", content: SYSTEM_PROMPT }];
+    const initial = "Hello… How are you feeling today?";
+    setConversation([{ sender: "ai", text: initial, timestamp: new Date() }]);
+    messagesRef.current.push({ role: "assistant", content: initial });
+    lastAIMessageRef.current = initial;
 
-      const initial = "Hello… How are you feeling today?";
-      setConversation([{ sender: "ai", text: initial, timestamp: new Date() }]);
-      messagesRef.current.push({ role: "assistant", content: initial });
-      lastAIMessageRef.current = initial;
-
-      await playBackendTTS(initial);
-      console.log("[Session] initial TTS done, starting recognition");
-    } catch (err: any) {
-      console.error("[Session] startSession error:", err);
-      setError(err.message);
-      endSession(false);
+    await playBackendTTS(initial);
+    console.log("[Session] initial TTS done, starting recognition");
+    if (recognitionRef.current) {
+      recognitionRef.current.start();
     }
   };
 
@@ -392,46 +375,49 @@ const DiagnosisSection: React.FC = () => {
   };
 
   const aggregateResults = (): SessionResults => {
-    // Get the most recent successful gaze and emotion results
-    const lastGaze = [...gazeResults].reverse().find(r => !r.error) || 
-      { error: "No valid gaze data collected" };
-    const lastEmotion = [...emotionResults].reverse().find(r => !r.error) || 
-      { error: "No valid emotion data collected" };
+    const lastGaze = [...gazeResults].reverse().find((r) => !r.error) || {
+      error: "No valid gaze data collected",
+    };
+    const lastEmotion = [...emotionResults].reverse().find((r) => !r.error) || {
+      error: "No valid emotion data collected",
+    };
 
     return {
       session_id: sessionIdRef.current,
-      gaze_tracking: lastGaze.error ? lastGaze : {
-        report: `Eye tracking analysis (${lastGaze.eye_count || 0} eyes detected)`,
-        session_id: lastGaze.session_id,
-        data: lastGaze
-      },
-      emotion_recognition: lastEmotion.error ? lastEmotion : {
-        summary: lastEmotion.summary,
-        stats: lastEmotion.stats,
-        interpretation: lastEmotion.interpretation,
-        session_id: lastEmotion.session_id,
-        data: lastEmotion
-      },
+      gaze_tracking: lastGaze.error
+        ? lastGaze
+        : {
+            session_id: lastGaze.session_id,
+            data: lastGaze,
+          },
+      emotion_recognition: lastEmotion.error
+        ? lastEmotion
+        : {
+            summary: lastEmotion.summary,
+            stats: lastEmotion.stats,
+            interpretation: lastEmotion.interpretation,
+            session_id: lastEmotion.session_id,
+            data: lastEmotion,
+          },
       voice_chat: { reply: "Completed" },
       transcript: transcriptLogRef.current.join("\n"),
       final_report: {
         report: "Analysis completed",
-        timestamp: new Date().toISOString()
-      }
+        timestamp: new Date().toISOString(),
+      },
     };
   };
 
   const endSession = async (isManual: boolean = false) => {
-    mediaRecorderRef.current?.state !== "inactive" && mediaRecorderRef.current?.stop();
-    streamRef.current?.getTracks().forEach((t) => t.stop());
     recognitionRef.current?.stop();
     frameIntervalRef.current && clearInterval(frameIntervalRef.current);
-
     setIsRecording(false);
     setSessionEnded(true);
 
     if (isManual && transcriptLogRef.current.length) {
       try {
+        setIsLoading(true);
+
         await fetch("http://127.0.0.1:8002/upload_transcript", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -448,10 +434,10 @@ const DiagnosisSection: React.FC = () => {
             messages: messagesRef.current.slice(0, 5),
             is_post_session: true,
             gaze_data: gazeResults,
-            emotion_data: emotionResults
+            emotion_data: emotionResults,
           }),
         });
-        
+
         if (!res.ok) throw new Error(await res.text());
         const data: SessionResults = await res.json();
         setSessionResults(data);
@@ -471,71 +457,215 @@ const DiagnosisSection: React.FC = () => {
     const blob = new Blob([text], { type: "text/plain" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
-    a.href = url; a.download = `transcript-${new Date().toISOString()}.txt`;
-    document.body.appendChild(a); a.click(); a.remove();
+    a.href = url;
+    a.download = `transcript-${new Date().toISOString()}.txt`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
   };
 
   return (
-    <section id="diagnosis" className="py-24 bg-gradient-to-b from-white to-psyche-gray-light">
-      <div className="container mx-auto px-4">
-        <div className="grid grid-cols-1 lg:grid-cols-5 gap-8">
-          <div className="lg:col-span-2 flex flex-col">
-            <Card className="flex-1">
-              <CardContent className="p-0 relative h-full flex flex-col">
-                <VideoPreview
-                  isRecording={isRecording}
-                  sessionEnded={sessionEnded}
-                  webcamRef={webcamRef}
-                />
-                <canvas
-                  ref={canvasRef}
-                  width="640"
-                  height="480"
-                  style={{ display: "none" }}
-                />
-              </CardContent>
-            </Card>
-            <SessionControls
-              isRecording={isRecording}
-              sessionEnded={sessionEnded}
-              onStartSession={startSession}
-              onEndSession={() => endSession(true)}
-              isLoading={isLoading}
-            />
-          </div>
-
-          <div className="lg:col-span-3 flex flex-col">
-            <div className="mb-4 flex items-center justify-between">
-              <h3 className="text-xl font-medium">Live Conversation</h3>
-            </div>
-            <Card className="flex-1">
-              <CardContent className="p-0 h-full">
-                <ConversationDisplay
-                  conversation={conversation}
-                  conversationRef={conversationRef}
-                  isRecording={isRecording}
-                />
-              </CardContent>
-            </Card>
-            {error && (
-              <div className="mt-4 p-4 bg-red-100 text-red-800 rounded">
-                {error}
+    <section
+      style={{
+        padding: "24px 0",
+        background: "linear-gradient(to bottom, #ffffff, #f5f6f5)",
+      }}
+    >
+      <div
+        style={{
+          maxWidth: "1280px",
+          margin: "0 auto",
+          padding: "0 16px",
+          display: "grid",
+          gridTemplateColumns: "1fr 1fr",
+          gap: "32px",
+        }}
+      >
+        <div style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
+          <div
+            style={{
+              border: "1px solid #e5e7eb",
+              borderRadius: "8px",
+              overflow: "hidden",
+              background: "#ffffff",
+            }}
+          >
+            {isRecording && !sessionEnded ? (
+              <Webcam
+                audio={false}
+                ref={webcamRef}
+                screenshotFormat="image/jpeg"
+                width={640}
+                height={480}
+                videoConstraints={{ facingMode: "user" }}
+                style={{
+                  width: "100%",
+                  height: "auto",
+                  borderRadius: "8px",
+                }}
+              />
+            ) : (
+              <div
+                style={{
+                  width: "640px",
+                  height: "480px",
+                  background: "#e5e7eb",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  borderRadius: "8px",
+                }}
+              >
+                <p style={{ color: "#6b7280" }}>Webcam Off</p>
               </div>
             )}
+            <canvas
+              ref={canvasRef}
+              width="640"
+              height="480"
+              style={{ display: "none" }}
+            />
           </div>
-
-          {sessionEnded && sessionResults && (
-            <div className="lg:col-span-5 flex justify-center">
-              <div className="w-full max-w-4xl">
-                <DiagnosisResults
-                  isVisible={sessionEnded}
-                  conversation={conversation}
-                  sessionResults={sessionResults}
-                />
-              </div>
+          <div style={{ display: "flex", gap: "16px", justifyContent: "center" }}>
+            {!isRecording && !sessionEnded && (
+              <button
+                onClick={startSession}
+                disabled={isLoading}
+                style={{
+                  padding: "10px 20px",
+                  fontSize: "16px",
+                  backgroundColor: isLoading ? "#6b7280" : "#007bff",
+                  color: "white",
+                  border: "none",
+                  borderRadius: "5px",
+                  cursor: isLoading ? "not-allowed" : "pointer",
+                }}
+                onMouseOver={(e) => {
+                  if (!isLoading) e.currentTarget.style.backgroundColor = "#0056b3";
+                }}
+                onMouseOut={(e) => {
+                  if (!isLoading) e.currentTarget.style.backgroundColor = "#007bff";
+                }}
+              >
+                Start Session
+              </button>
+            )}
+            {isRecording && (
+              <button
+                onClick={() => endSession(true)}
+                disabled={isLoading}
+                style={{
+                  padding: "10px 20px",
+                  fontSize: "16px",
+                  backgroundColor: isLoading ? "#6b7280" : "#dc2626",
+                  color: "white",
+                  border: "none",
+                  borderRadius: "5px",
+                  cursor: isLoading ? "not-allowed" : "pointer",
+                }}
+                onMouseOver={(e) => {
+                  if (!isLoading) e.currentTarget.style.backgroundColor = "#b91c1c";
+                }}
+                onMouseOut={(e) => {
+                  if (!isLoading) e.currentTarget.style.backgroundColor = "#dc2626";
+                }}
+              >
+                End Session
+              </button>
+            )}
+            {sessionEnded && conversation.length > 0 && (
+              <button
+                onClick={saveTranscript}
+                style={{
+                  padding: "10px 20px",
+                  fontSize: "16px",
+                  backgroundColor: "#10b981",
+                  color: "white",
+                  border: "none",
+                  borderRadius: "5px",
+                  cursor: "pointer",
+                }}
+                onMouseOver={(e) => (e.currentTarget.style.backgroundColor = "#059669")}
+                onMouseOut={(e) => (e.currentTarget.style.backgroundColor = "#10b981")}
+              >
+                Save Transcript
+              </button>
+            )}
+          </div>
+        </div>
+        <div style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
+          <h3 style={{ fontSize: "20px", fontWeight: "medium" }}>Live Conversation</h3>
+          <div
+            style={{
+              flex: 1,
+              border: "1px solid #e5e7eb",
+              borderRadius: "8px",
+              overflow: "hidden",
+              background: "#ffffff",
+            }}
+          >
+            <div
+              style={{
+                flex: 1,
+                padding: "16px",
+                overflowY: "auto",
+                maxHeight: "480px",
+              }}
+              ref={conversationRef}
+            >
+              {conversation.map((msg, index) => (
+                <div
+                  key={index}
+                  style={{
+                    marginBottom: "16px",
+                    padding: "8px",
+                    borderRadius: "6px",
+                    background: msg.sender === "ai" ? "#f0f9ff" : "#f3f4f6",
+                    textAlign: msg.sender === "ai" ? "left" : "right",
+                  }}
+                >
+                  <strong>{msg.sender === "ai" ? "AI" : "You"}: </strong>
+                  {msg.text}
+                  <div style={{ fontSize: "12px", color: "#6b7280", marginTop: "4px" }}>
+                    {msg.timestamp.toLocaleTimeString()}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+          {isListening && (
+            <div style={{ textAlign: "center", color: "#10b981", fontSize: "14px" }}>
+              Listening...
+            </div>
+          )}
+          {isSpeaking && (
+            <div style={{ textAlign: "center", color: "#3b82f6", fontSize: "14px" }}>
+              Speaking...
+            </div>
+          )}
+          {error && (
+            <div
+              style={{
+                marginTop: "16px",
+                padding: "16px",
+                backgroundColor: "#fee2e2",
+                color: "#991b1b",
+                borderRadius: "8px",
+              }}
+            >
+              {error}
             </div>
           )}
         </div>
+        {sessionEnded && sessionResults && (
+          <div style={{ gridColumn: "1 / -1" }}>
+            <DiagnosisResults
+              isVisible={sessionEnded}
+              conversation={conversation}
+              sessionResults={sessionResults}
+            />
+          </div>
+        )}
       </div>
     </section>
   );

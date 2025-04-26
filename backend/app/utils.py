@@ -2,6 +2,7 @@ import os
 from dotenv import load_dotenv
 from langchain_community.embeddings import CohereEmbeddings
 from pinecone import Pinecone
+from typing import List, Dict, Any
 
 load_dotenv()
 
@@ -41,7 +42,7 @@ async def get_combined_context(emotion_report: str, eye_tracking: str, transcrip
         return ""
 
 async def diagnose_and_treat(
-    emotion_report: dict,
+    emotion_report: Dict[str, str],
     eye_tracking_report: str,
     conversation_transcript: str,
     model='llama3-8b-8192',
@@ -52,19 +53,19 @@ async def diagnose_and_treat(
         return "groq_client is not provided."
 
     try:
-        # Debug
-        print("DIAGNOSE INPUT TYPES:", type(emotion_report), type(eye_tracking_report), type(conversation_transcript))
-
         # Format inputs
-        emotion_summary = emotion_report.get("summary", "")
-        emotion_stats = emotion_report.get("stats", "")
-        emotion_interpretation = emotion_report.get("interpretation", "")
+        emotion_summary = emotion_report.get("summary", "No data available")
+        emotion_stats = emotion_report.get("stats", "No data available")
+        emotion_interpretation = emotion_report.get("interpretation", "No data available")
 
-        eye_tracking = eye_tracking_report
-        transcript = conversation_transcript
-
-        user_data = f"{emotion_summary}\n\n{emotion_stats}\n\n{emotion_interpretation}\n\n{eye_tracking}\n\n{transcript}"
-        context = await get_combined_context(emotion_summary, eye_tracking, transcript)
+        user_data = f"""
+Emotion Summary: {emotion_summary}
+Emotion Statistics: {emotion_stats}
+Emotion Interpretation: {emotion_interpretation}
+Eye Tracking Report: {eye_tracking_report}
+Conversation Transcript: {conversation_transcript}
+"""
+        context = await get_combined_context(emotion_summary, eye_tracking_report, conversation_transcript)
 
         prompt = SYSTEM_PROMPT + f"\n\nUse this context to generate a diagnostic and treatment plan:\n{context}"
 
@@ -77,7 +78,7 @@ async def diagnose_and_treat(
             messages=messages,
             model=model,
             temperature=0.7,
-            max_tokens=300
+            max_tokens=1000
         )
 
         return res.choices[0].message.content
