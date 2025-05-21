@@ -38,9 +38,9 @@ const Footer = () => {
           <div>
             <h3 className="font-medium mb-4">Contact</h3>
             <ul className="space-y-2">
-              <li className="text-gray-600">info@psycheai.example</li>
-              <li className="text-gray-600">+1 (555) 123-4567</li>
-              <li className="text-gray-600">123 AI Boulevard, Tech City</li>
+              <li className="text-gray-600">info@psycheai.dz</li>
+              <li className="text-gray-600">+213 123456789</li>
+              <li className="text-gray-600">123 psychology Boulevard, AI City</li>
             </ul>
           </div>
         </div>
@@ -49,9 +49,7 @@ const Footer = () => {
           <p className="text-gray-500 text-sm mb-4 md:mb-0">
             © {new Date().getFullYear()} PsycheAI. All rights reserved.
           </p>
-          <p className="text-gray-500 text-sm">
-            <span className="font-medium">Disclaimer:</span> This is a demonstration application and not intended for clinical use.
-          </p>
+          
         </div>
       </div>
     </footer>

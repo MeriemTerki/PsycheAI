@@ -65,7 +65,7 @@ const About = () => {
                 {[
                   "End-to-end encryption for all sessions",
                   "Compliance with healthcare privacy standards",
-                  "Optional anonymized data collection",
+                 
                   "Transparent AI decision-making process",
                   "Regular third-party ethical audits"
                 ].map((item, index) => (

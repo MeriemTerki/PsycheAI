@@ -574,211 +574,240 @@ const DiagnosisSection: React.FC = () => {
     a.remove();
   };
 
-  return (
-    <section
+ return (
+  <section
+    id="diagnosis"
+    style={{
+      padding: "24px 0",
+      background: "linear-gradient(to bottom, #ffffff, #f5f6f5)",
+    }}
+  >
+    <div
       style={{
-        padding: "24px 0",
-        background: "linear-gradient(to bottom, #ffffff, #f5f6f5)",
+        maxWidth: "1280px",
+        margin: "0 auto",
+        padding: "0 16px",
+        display: "grid",
+        gridTemplateColumns: "1fr 1fr",
+        gap: "32px",
       }}
     >
-      <div
-        style={{
-          maxWidth: "1280px",
-          margin: "0 auto",
-          padding: "0 16px",
-          display: "grid",
-          gridTemplateColumns: "1fr 1fr",
-          gap: "32px",
-        }}
-      >
-        <div style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
-          <div
-            style={{
-              border: "1px solid #e5e7eb",
-              borderRadius: "8px",
-              overflow: "hidden",
-              background: "#ffffff",
-            }}
-          >
-            {isRecording && !sessionEnded ? (
-              <Webcam
-                audio={false}
-                ref={webcamRef}
-                screenshotFormat="image/jpeg"
-                width={640}
-                height={480}
-                videoConstraints={{ facingMode: "user" }}
-                style={{
-                  width: "100%",
-                  height: "auto",
-                  borderRadius: "8px",
-                }}
-              />
-            ) : (
-              <div
-                style={{
-                  width: "640px",
-                  height: "480px",
-                  background: "#e5e7eb",
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  borderRadius: "8px",
-                }}
-              >
-                <p style={{ color: "#6b7280" }}>Webcam Off</p>
-              </div>
-            )}
-            <canvas
-              ref={canvasRef}
-              width="640"
-              height="480"
-              style={{ display: "none" }}
+      <div style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
+        <div
+          style={{
+            border: "1px solid #e5e7eb",
+            borderRadius: "8px",
+            overflow: "hidden",
+            background: "#ffffff",
+          }}
+        >
+          {isRecording && !sessionEnded ? (
+            <Webcam
+              audio={false}
+              ref={webcamRef}
+              screenshotFormat="image/jpeg"
+              width={640}
+              height={480}
+              videoConstraints={{ facingMode: "user" }}
+              style={{
+                width: "100%",
+                height: "auto",
+                borderRadius: "8px",
+              }}
             />
-          </div>
-          <div style={{ display: "flex", gap: "16px", justifyContent: "center" }}>
-            {!isRecording && !sessionEnded && (
-              <button
-                onClick={startSession}
-                disabled={isLoading}
-                style={{
-                  padding: "10px 20px",
-                  fontSize: "16px",
-                  backgroundColor: isLoading ? "#6b7280" : "#007bff",
-                  color: "white",
-                  border: "none",
-                  borderRadius: "5px",
-                  cursor: isLoading ? "not-allowed" : "pointer",
-                }}
-                onMouseOver={(e) => {
-                  if (!isLoading) e.currentTarget.style.backgroundColor = "#0056b3";
-                }}
-                onMouseOut={(e) => {
-                  if (!isLoading) e.currentTarget.style.backgroundColor = "#007bff";
-                }}
-              >
-                Start Session
-              </button>
-            )}
-            {isRecording && (
-              <button
-                onClick={() => endSession(true)}
-                disabled={isLoading}
-                style={{
-                  padding: "10px 20px",
-                  fontSize: "16px",
-                  backgroundColor: isLoading ? "#6b7280" : "#dc2626",
-                  color: "white",
-                  border: "none",
-                  borderRadius: "5px",
-                  cursor: isLoading ? "not-allowed" : "pointer",
-                }}
-                onMouseOver={(e) => {
-                  if (!isLoading) e.currentTarget.style.backgroundColor = "#b91c1c";
-                }}
-                onMouseOut={(e) => {
-                  if (!isLoading) e.currentTarget.style.backgroundColor = "#dc2626";
-                }}
-              >
-                End Session
-              </button>
-            )}
-            {sessionEnded && conversation.length > 0 && (
-              <button
-                onClick={saveTranscript}
-                style={{
-                  padding: "10px 20px",
-                  fontSize: "16px",
-                  backgroundColor: "#10b981",
-                  color: "white",
-                  border: "none",
-                  borderRadius: "5px",
-                  cursor: "pointer",
-                }}
-                onMouseOver={(e) => (e.currentTarget.style.backgroundColor = "#059669")}
-                onMouseOut={(e) => (e.currentTarget.style.backgroundColor = "#10b981")}
-              >
-                Save Transcript
-              </button>
-            )}
-          </div>
+          ) : (
+            <div
+              style={{
+                width: "640px",
+                height: "480px",
+                background: "#e5e7eb",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                borderRadius: "8px",
+                boxShadow: "0 2px 4px rgba(0, 0, 0, 0.1)",
+              }}
+            >
+              <p style={{ color: "#6b7280", fontSize: "18px" }}>Webcam Off</p>
+            </div>
+          )}
+          <canvas
+            ref={canvasRef}
+            width="640"
+            height="480"
+            style={{ display: "none" }}
+          />
         </div>
-        <div style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
-          <h3 style={{ fontSize: "20px", fontWeight: "medium" }}>Live Conversation</h3>
+        <div style={{ display: "flex", gap: "16px", justifyContent: "center" }}>
+          {!isRecording && !sessionEnded && (
+            <button
+              onClick={startSession}
+              disabled={isLoading}
+              style={{
+                padding: "10px 20px",
+                fontSize: "16px",
+                backgroundColor: isLoading ? "#6b7280" : "#007bff",
+                color: "white",
+                border: "none",
+                borderRadius: "5px",
+                cursor: isLoading ? "not-allowed" : "pointer",
+                boxShadow: isLoading ? "none" : "0 2px 4px rgba(0, 123, 255, 0.3)",
+                transition: "background-color 0.3s, box-shadow 0.3s",
+              }}
+              onMouseOver={(e) => {
+                if (!isLoading) {
+                  e.currentTarget.style.backgroundColor = "#0056b3";
+                  e.currentTarget.style.boxShadow = "0 4px 8px rgba(0, 86, 179, 0.4)";
+                }
+              }}
+              onMouseOut={(e) => {
+                if (!isLoading) {
+                  e.currentTarget.style.backgroundColor = "#007bff";
+                  e.currentTarget.style.boxShadow = "0 2px 4px rgba(0, 123, 255, 0.3)";
+                }
+              }}
+            >
+              Start Session
+            </button>
+          )}
+          {isRecording && (
+            <button
+              onClick={() => endSession(true)}
+              disabled={isLoading}
+              style={{
+                padding: "10px 20px",
+                fontSize: "16px",
+                backgroundColor: isLoading ? "#6b7280" : "#dc2626",
+                color: "white",
+                border: "none",
+                borderRadius: "5px",
+                cursor: isLoading ? "not-allowed" : "pointer",
+                boxShadow: isLoading ? "none" : "0 2px 4px rgba(220, 38, 38, 0.3)",
+                transition: "background-color 0.3s, box-shadow 0.3s",
+              }}
+              onMouseOver={(e) => {
+                if (!isLoading) {
+                  e.currentTarget.style.backgroundColor = "#b91c1c";
+                  e.currentTarget.style.boxShadow = "0 4px 8px rgba(185, 28, 28, 0.4)";
+                }
+              }}
+              onMouseOut={(e) => {
+                if (!isLoading) {
+                  e.currentTarget.style.backgroundColor = "#dc2626";
+                  e.currentTarget.style.boxShadow = "0 2px 4px rgba(220, 38, 38, 0.3)";
+                }
+              }}
+            >
+              End Session
+            </button>
+          )}
+          {sessionEnded && conversation.length > 0 && (
+            <button
+              onClick={saveTranscript}
+              style={{
+                padding: "10px 20px",
+                fontSize: "16px",
+                backgroundColor: "#10b981",
+                color: "white",
+                border: "none",
+                borderRadius: "5px",
+                cursor: "pointer",
+                boxShadow: "0 2px 4px rgba(16, 185, 129, 0.3)",
+                transition: "background-color 0.3s, box-shadow 0.3s",
+              }}
+              // onMouseOver={(e) => (e.currentTarget.style.backgroundColor = "#059669")}
+              // onMouseOut={(e) => (e.currentTarget.style.backgroundColor = "#10b981")}
+              className="bg-gradient-to-r from-psyche-purple to-psyche-blue text-white hover:opacity-90 transition-all px-8 py-6 text-lg"
+            >
+              Save Transcript
+            </button>
+          )}
+        </div>
+      </div>
+      <div style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
+        <div>
+          <h2 style={{ fontSize: "24px", fontWeight: "bold", color: "#1f2937" }}>
+            Begin Your Assessment
+          </h2>
+          <p style={{ fontSize: "16px", color: "#6b7280", marginTop: "8px" }}>
+            Get ready to start your personalized psychological assessment with PsycheAI. Click 'Start Session' to begin.
+          </p>
+        </div>
+        <div
+          style={{
+            flex: 1,
+            border: "1px solid #e5e7eb",
+            borderRadius: "8px",
+            overflow: "hidden",
+            background: "#ffffff",
+            boxShadow: "0 2px 4px rgba(0, 0, 0, 0.1)",
+          }}
+        >
           <div
             style={{
               flex: 1,
-              border: "1px solid #e5e7eb",
+              padding: "16px",
+              overflowY: "auto",
+              maxHeight: "480px",
+            }}
+            ref={conversationRef}
+          >
+            {conversation.map((msg, index) => (
+              <div
+                key={index}
+                style={{
+                  marginBottom: "16px",
+                  padding: "8px",
+                  borderRadius: "6px",
+                  background: msg.sender === "ai" ? "#f0f9ff" : "#f3f4f6",
+                  textAlign: msg.sender === "ai" ? "left" : "right",
+                }}
+              >
+                <strong>{msg.sender === "ai" ? "AI" : "You"}: </strong>
+                {msg.text}
+                <div style={{ fontSize: "12px", color: "#6b7280", marginTop: "4px" }}>
+                  {msg.timestamp.toLocaleTimeString()}
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+        {isListening && (
+          <div style={{ textAlign: "center", color: "#10b981", fontSize: "14px" }}>
+            Listening...
+          </div>
+        )}
+        {isSpeaking && (
+          <div style={{ textAlign: "center", color: "#3b82f6", fontSize: "14px" }}>
+            Speaking...
+          </div>
+        )}
+        {error && (
+          <div
+            style={{
+              marginTop: "16px",
+              padding: "16px",
+              backgroundColor: "#fee2e2",
+              color: "#991b1b",
               borderRadius: "8px",
-              overflow: "hidden",
-              background: "#ffffff",
             }}
           >
-            <div
-              style={{
-                flex: 1,
-                padding: "16px",
-                overflowY: "auto",
-                maxHeight: "480px",
-              }}
-              ref={conversationRef}
-            >
-              {conversation.map((msg, index) => (
-                <div
-                  key={index}
-                  style={{
-                    marginBottom: "16px",
-                    padding: "8px",
-                    borderRadius: "6px",
-                    background: msg.sender === "ai" ? "#f0f9ff" : "#f3f4f6",
-                    textAlign: msg.sender === "ai" ? "left" : "right",
-                  }}
-                >
-                  <strong>{msg.sender === "ai" ? "AI" : "You"}: </strong>
-                  {msg.text}
-                  <div style={{ fontSize: "12px", color: "#6b7280", marginTop: "4px" }}>
-                    {msg.timestamp.toLocaleTimeString()}
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-          {isListening && (
-            <div style={{ textAlign: "center", color: "#10b981", fontSize: "14px" }}>
-              Listening...
-            </div>
-          )}
-          {isSpeaking && (
-            <div style={{ textAlign: "center", color: "#3b82f6", fontSize: "14px" }}>
-              Speaking...
-            </div>
-          )}
-          {error && (
-            <div
-              style={{
-                marginTop: "16px",
-                padding: "16px",
-                backgroundColor: "#fee2e2",
-                color: "#991b1b",
-                borderRadius: "8px",
-              }}
-            >
-              {error}
-            </div>
-          )}
-        </div>
-        {sessionEnded && sessionResults && (
-          <div style={{ gridColumn: "1 / -1" }}>
-            <DiagnosisResults
-              isVisible={sessionEnded}
-              conversation={conversation}
-              sessionResults={sessionResults}
-            />
+            {error}
           </div>
         )}
       </div>
-    </section>
-  );
+      {sessionEnded && sessionResults && (
+        <div style={{ gridColumn: "1 / -1" }}>
+          <DiagnosisResults
+            isVisible={sessionEnded}
+            conversation={conversation}
+            sessionResults={sessionResults}
+          />
+        </div>
+      )}
+    </div>
+  </section>
+);
 };
 
 export default DiagnosisSection;
