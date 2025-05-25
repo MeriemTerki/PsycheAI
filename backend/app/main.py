@@ -78,6 +78,9 @@ class SessionResult(BaseModel):
     transcript: str
     final_report: FinalReport
 
+# Store the last generated report
+last_generated_report: Optional[FinalReport] = None
+
 # System Prompt
 REPORT_SYSTEM_PROMPT = """
 You are a psychological data analyst tasked with generating a comprehensive mental health assessment report. Your role is to:
@@ -229,10 +232,14 @@ async def run_session(messages: List[Dict[str, str]], is_post: bool, gaze_data_i
         transcript=transcript
     )
 
+    # Store the generated report
+    global last_generated_report
+    last_generated_report = final_report
+
     # Construct and return session result
     result = SessionResult(
         session_id=session_id,
-        gaze_tracking=gaze_data.dict(exclude_none=True),  # Convert to dict and exclude None values
+        gaze_tracking=gaze_data.dict(exclude_none=True),
         emotion_recognition=emotion_data,
         voice_chat=chat_data,
         transcript=transcript,
@@ -320,4 +327,17 @@ async def generate_eye_tracking_report(request: Dict[str, Any]):
         raise
     except Exception as e:
         logger.exception(f"Error generating eye tracking report: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/get-report")
+async def get_report():
+    """
+    Get the last generated report from the session.
+    """
+    try:
+        if last_generated_report is None:
+            raise HTTPException(status_code=404, detail="No report has been generated yet")
+        return last_generated_report
+    except Exception as e:
+        logger.error(f"Error retrieving report: {e}")
         raise HTTPException(status_code=500, detail=str(e))

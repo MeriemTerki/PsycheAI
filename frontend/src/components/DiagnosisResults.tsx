@@ -422,8 +422,8 @@ const DiagnosisResults: React.FC<DiagnosisResultsProps> = ({ isVisible, conversa
 
   return (
     <div style={{
-      marginTop: "32px",
-      padding: "24px",
+        marginTop: "32px",
+        padding: "24px",
       backgroundColor: "#f9fafb",
       borderRadius: "12px",
       border: "1px solid #e5e7eb"
@@ -440,49 +440,49 @@ const DiagnosisResults: React.FC<DiagnosisResultsProps> = ({ isVisible, conversa
           color: "#111827"
         }}>
           Mental Health Assessment Report
-        </h2>
+      </h2>
         <div style={{ display: "flex", gap: "12px" }}>
-          <button
-            onClick={handlePrintTranscript}
-            style={{
+        <button
+          onClick={handlePrintTranscript}
+          style={{
               padding: "8px 16px",
               fontSize: "14px",
-              backgroundColor: "#10b981",
-              color: "white",
-              border: "none",
+            backgroundColor: "#10b981",
+            color: "white",
+            border: "none",
               borderRadius: "6px",
-              cursor: "pointer",
+            cursor: "pointer",
               display: "flex",
               alignItems: "center",
               gap: "8px",
               transition: "all 0.2s"
-            }}
-            onMouseOver={(e) => (e.currentTarget.style.backgroundColor = "#059669")}
-            onMouseOut={(e) => (e.currentTarget.style.backgroundColor = "#10b981")}
-          >
+          }}
+          onMouseOver={(e) => (e.currentTarget.style.backgroundColor = "#059669")}
+          onMouseOut={(e) => (e.currentTarget.style.backgroundColor = "#10b981")}
+        >
             <span>📄</span> Print Transcript
-          </button>
-          <button
-            onClick={handlePrintReport}
-            style={{
+        </button>
+        <button
+          onClick={handlePrintReport}
+          style={{
               padding: "8px 16px",
               fontSize: "14px",
-              backgroundColor: "#3b82f6",
-              color: "white",
-              border: "none",
+            backgroundColor: "#3b82f6",
+            color: "white",
+            border: "none",
               borderRadius: "6px",
-              cursor: "pointer",
+            cursor: "pointer",
               display: "flex",
               alignItems: "center",
               gap: "8px",
               transition: "all 0.2s"
-            }}
+          }}
             onMouseOver={(e) => (e.currentTarget.style.backgroundColor = "#2563eb")}
-            onMouseOut={(e) => (e.currentTarget.style.backgroundColor = "#3b82f6")}
-          >
+          onMouseOut={(e) => (e.currentTarget.style.backgroundColor = "#3b82f6")}
+        >
             <span>📊</span> Print Report
-          </button>
-        </div>
+        </button>
+      </div>
       </div>
 
       {renderSection("Session Information", (

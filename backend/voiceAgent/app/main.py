@@ -26,8 +26,12 @@ class TranscriptRequest(BaseModel):
 class TTSRequest(BaseModel):
     text: str   # <-- new model for TTS
 
-# In-memory transcript storage
+class ReportRequest(BaseModel):
+    report: str
+
+# In-memory storage
 transcript_storage = ""
+report_storage = ""
 
 @app.post("/chat")
 async def chat(request: ChatRequest):
@@ -59,6 +63,27 @@ async def get_transcript():
         return {"transcript": transcript_storage}
     except Exception as e:
         console.print(f"Error in /transcript: {e}", style="red")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/upload_report")
+async def upload_report(request: ReportRequest):
+    try:
+        console.print("Received /upload_report request", style="bold yellow")
+        global report_storage
+        report_storage = request.report
+        console.print("Report uploaded successfully", style="green")
+        return {"status": "success"}
+    except Exception as e:
+        console.print(f"Error in /upload_report: {e}", style="red")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/report")
+async def get_report():
+    try:
+        console.print("Received /report request", style="bold yellow")
+        return {"report": report_storage}
+    except Exception as e:
+        console.print(f"Error in /report: {e}", style="red")
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.post("/tts")   # <-- new endpoint
