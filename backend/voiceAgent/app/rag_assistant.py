@@ -21,17 +21,43 @@ from datetime import datetime
 load_dotenv()
 
 SYSTEM_PROMPT = """You are a compassionate, professional mental health assistant. Your role is to:
-1. **Listen actively** and respond with empathy, warmth, and non-judgmental support.
-2. **Use the provided context** (therapy Q&A, techniques, or resources) to offer accurate, evidence-based guidance.
-3. **Prioritize safety**: Never diagnose or replace human therapists. For crises (self-harm, abuse), say:
-   "I'm deeply concerned. Please contact [crisis hotline] or your therapist immediately."
-4. **Keep responses concise** (1-2 sentences max) for voice interactions, but adjust for complex topics.
-5. **Encourage professional help**: 
-   "That sounds really challenging. A therapist could help you explore this further."
 
-Example tone:
-- "I hear how painful this feels. Many people find mindfulness helpful—would you like a short exercise?"
-- "It's brave of you to share this. The resources I have suggest [context tip]."
+1. **Response Format**:
+   - Use plain, natural language without any special symbols
+   - Do not use asterisks (*), plus signs (+), or bullet points
+   - Write responses as clear, simple sentences
+   - Avoid any markdown or formatting symbols
+
+2. **Listen and Respond Precisely**:
+   - Only respond to what the user explicitly shares
+   - Never make assumptions about their situation
+   - Don't add or infer details that weren't mentioned
+   - If context is needed, ask for clarification instead of assuming
+
+3. **Structure Your Responses**:
+   - Start with a brief acknowledgment
+   - Then provide a clear, direct response
+   - End with a specific suggestion or question
+   - Keep everything in plain text format
+
+4. **Safety Guidelines**:
+   - For crisis situations, say plainly:
+     "I'm concerned about your safety. Please contact emergency services or a crisis hotline immediately."
+   - For complex issues, say:
+     "This sounds challenging. A mental health professional could provide the support you need."
+
+5. **Use Evidence-Based Approaches**:
+   - Only use techniques from provided context
+   - When uncertain, focus on active listening
+   - Validate emotions without making interpretations
+   - Use clear, simple language without special formatting
+
+Example responses:
+User: "I'm feeling stressed about my work."
+Response: "I understand you're feeling stressed about your work. Would you like to try a quick breathing exercise to help manage that stress?"
+
+User: "I'm anxious about my upcoming presentation."
+Response: "It's natural to feel anxious about presentations. Would you like to explore some specific techniques for presentation anxiety?"
 
 Context to use (if available):
 {context}
@@ -107,20 +133,17 @@ async def get_relevant_context(query: str, top_k: int = 3) -> str:
 async def assistant_chat(messages, model='llama3-8b-8192', min_duration=3):
     try:
         start_time = datetime.now()
-        # Check if the last message is a user query that might need RAG
         user_query = messages[-1]['content'] if messages[-1]['role'] == 'user' else ""
         
-        # Only use RAG for substantive questions (not greetings, etc.)
         if (len(user_query.split()) > 3 and 
             not any(word in user_query.lower() for word in ['hi', 'hello', 'hey', 'bye', 'thanks'])):
             
             context = await get_relevant_context(user_query)
             if context:
-                # Add context to the system prompt for this query
                 rag_system_prompt = SYSTEM_PROMPT + f"\n\nUse this context to answer the question:\n{context}"
                 messages_with_context = [
                     {'role': 'system', 'content': rag_system_prompt},
-                    *messages[1:]  # Skip the original system prompt
+                    *messages[1:]
                 ]
                 
                 res = await groq.chat.completions.create(
@@ -131,7 +154,6 @@ async def assistant_chat(messages, model='llama3-8b-8192', min_duration=3):
                 )
                 response = res.choices[0].message.content
             else:
-                # Default response without RAG if context is empty
                 res = await groq.chat.completions.create(
                     messages=messages,
                     model=model,
@@ -140,7 +162,6 @@ async def assistant_chat(messages, model='llama3-8b-8192', min_duration=3):
                 )
                 response = res.choices[0].message.content
         else:
-            # Default response without RAG
             res = await groq.chat.completions.create(
                 messages=messages,
                 model=model,
@@ -149,13 +170,30 @@ async def assistant_chat(messages, model='llama3-8b-8192', min_duration=3):
             )
             response = res.choices[0].message.content
         
+        # Clean up the response
+        cleaned_response = (response
+            .replace('*', '')  # Remove asterisks
+            .replace('+', '')  # Remove plus signs
+            .replace('•', '')  # Remove bullet points
+            .replace('-', '')  # Remove hyphens
+            .replace('_', '')  # Remove underscores
+            .replace('#', '')  # Remove hash symbols
+            .replace('`', '')  # Remove backticks
+            .strip())         # Remove extra whitespace
+        
+        # Ensure proper sentence spacing
+        cleaned_response = re.sub(r'\s+', ' ', cleaned_response)  # Replace multiple spaces with single space
+        cleaned_response = re.sub(r'\s*\.\s*', '. ', cleaned_response)  # Ensure proper spacing after periods
+        cleaned_response = re.sub(r'\s*\?\s*', '? ', cleaned_response)  # Ensure proper spacing after question marks
+        cleaned_response = re.sub(r'\s*!\s*', '! ', cleaned_response)  # Ensure proper spacing after exclamation marks
+        
         # Ensure minimum duration
         elapsed = (datetime.now() - start_time).total_seconds()
         if elapsed < min_duration:
             await asyncio.sleep(min_duration - elapsed)
         
         console.print(f"[{datetime.now().isoformat()}] Assistant chat completed in {elapsed:.2f} seconds", style="green")
-        return response
+        return cleaned_response
     
     except Exception as e:
         console.print(f"[{datetime.now().isoformat()}] Error in assistant_chat: {e}", style="red")
