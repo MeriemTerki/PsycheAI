@@ -109,6 +109,7 @@ class GazeResponse(BaseModel):
 
 class GazeReportRequest(BaseModel):
     session_id: str
+    gaze_data: List[Dict[str, Any]] | None = None
 
 class GazeReportResponse(BaseModel):
     session_id: str
@@ -227,8 +228,8 @@ async def capture_eye_tracking(request: FrameRequest):
             error=str(e)
         )
 
-@app.post("/generate-gaze-report", response_model=GazeReportResponse)
-async def generate_gaze_report(request: GazeReportRequest):
+@app.post("/generate-eye-tracking-report", response_model=GazeReportResponse)
+async def generate_eye_tracking_report(request: GazeReportRequest):
     """
     Generate a summary report for a session's gaze tracking data with psychological interpretation.
     """
@@ -239,18 +240,17 @@ async def generate_gaze_report(request: GazeReportRequest):
 
         logger.info(f"Generating gaze report for session {request.session_id}")
 
-        # Load gaze data
-        session_data = load_gaze_data(request.session_id)
+        # Use provided gaze data if available, otherwise load from file
+        session_data = request.gaze_data if request.gaze_data else load_gaze_data(request.session_id)
         
         if not session_data:
-            available_sessions = [f.replace(".json", "") for f in os.listdir(DATA_DIR) if f.endswith(".json")]
-            error_msg = f"No gaze data available for session {request.session_id}. Available sessions: {available_sessions}"
+            error_msg = f"No gaze data available for session {request.session_id}"
             logger.warning(error_msg)
             raise HTTPException(status_code=404, detail=error_msg)
 
         # Calculate summary statistics
         total_frames = len(session_data)
-        valid_frames = sum(1 for entry in session_data if entry["eye_count"] > 0)
+        valid_frames = sum(1 for entry in session_data if entry.get("eye_count", 0) > 0)
         
         if valid_frames == 0:
             logger.warning(f"No valid frames with eye detections for session {request.session_id}")
@@ -263,59 +263,64 @@ async def generate_gaze_report(request: GazeReportRequest):
                 error="No valid frames with eye detections"
             )
 
-        avg_eye_count = sum(entry["eye_count"] for entry in session_data) / total_frames
-        gaze_points = [p for entry in session_data for p in entry["gaze_points"]]
-        avg_gaze_x = sum(p["x"] for p in gaze_points) / len(gaze_points) if gaze_points else 0
-        avg_gaze_y = sum(p["y"] for p in gaze_points) / len(gaze_points) if gaze_points else 0
-        x_range = (min(p["x"] for p in gaze_points), max(p["x"] for p in gaze_points)) if gaze_points else (0, 0)
-        y_range = (min(p["y"] for p in gaze_points), max(p["y"] for p in gaze_points)) if gaze_points else (0, 0)
+        avg_eye_count = sum(entry.get("eye_count", 0) for entry in session_data) / total_frames
+        gaze_points = [p for entry in session_data for p in entry.get("gaze_points", [])]
+        
+        if not gaze_points:
+            logger.warning(f"No gaze points found in data for session {request.session_id}")
+            return GazeReportResponse(
+                session_id=request.session_id,
+                data=session_data,
+                summary="No valid gaze points collected",
+                stats="No statistics available",
+                interpretation="Unable to analyze due to lack of valid gaze points.",
+                error="No valid gaze points found in data"
+            )
 
-        # Calculate gaze stability (standard deviation of gaze points)
-        x_std = np.std([p["x"] for p in gaze_points]) if gaze_points else 0
-        y_std = np.std([p["y"] for p in gaze_points]) if gaze_points else 0
+        # Calculate gaze metrics
+        avg_gaze_x = sum(p.get("x", 0.5) for p in gaze_points) / len(gaze_points)
+        avg_gaze_y = sum(p.get("y", 0.5) for p in gaze_points) / len(gaze_points)
+        x_range = (min(p.get("x", 0.5) for p in gaze_points), max(p.get("x", 0.5) for p in gaze_points))
+        y_range = (min(p.get("y", 0.5) for p in gaze_points), max(p.get("y", 0.5) for p in gaze_points))
+
+        # Calculate gaze stability
+        x_std = np.std([p.get("x", 0.5) for p in gaze_points])
+        y_std = np.std([p.get("y", 0.5) for p in gaze_points])
         gaze_stability = (x_std + y_std) / 2
 
-        # Detect fixation patterns (simple heuristic: count consecutive frames with small movement)
-        fixation_threshold = 0.05  # Max movement for fixation (normalized units)
-        fixation_count = 0
-        fixation_duration = 0
-        prev_point = None
-        for entry in session_data:
-            for point in entry["gaze_points"]:
-                if prev_point:
-                    dist = distance.euclidean((point["x"], point["y"]), (prev_point["x"], prev_point["y"]))
-                    if dist < fixation_threshold:
-                        fixation_duration += 1
-                    else:
-                        if fixation_duration >= 2:  # At least 2 frames for a fixation
-                            fixation_count += 1
-                        fixation_duration = 0
-                prev_point = point
-        if fixation_duration >= 2:
-            fixation_count += 1
-
-        # Generate report
-        summary = f"Eye tracking analysis completed: {valid_frames}/{total_frames} frames with eye detections"
+        # Generate report sections
+        summary = f"Eye tracking analysis completed with {valid_frames} valid frames out of {total_frames} total frames ({(valid_frames/total_frames*100):.1f}% success rate)"
+        
         stats = (
-            f"Average eyes detected per frame: {avg_eye_count:.2f}\n"
-            f"Average gaze position: X={avg_gaze_x:.2f}, Y={avg_gaze_y:.2f}\n"
-            f"Gaze range: X={x_range[0]:.2f}-{x_range[1]:.2f}, Y={y_range[0]:.2f}-{y_range[1]:.2f}\n"
-            f"Gaze stability (std dev): X={x_std:.3f}, Y={y_std:.3f}\n"
-            f"Fixation count: {fixation_count}"
-        )
-        interpretation = (
-            f"The gaze tracking data indicates that the user's eyes were detected in {valid_frames} out of {total_frames} frames, "
-            f"with an average of {avg_eye_count:.2f} eyes per frame, suggesting reliable tracking for most of the session. "
-            f"The average gaze position (X={avg_gaze_x:.2f}, Y={avg_gaze_y:.2f}) and range (X={x_range[0]:.2f}-{x_range[1]:.2f}, "
-            f"Y={y_range[0]:.2f}-{y_range[1]:.2f}) indicate that the user's attention was generally centered with moderate movement, "
-            f"reflecting engagement with the visual stimuli.\n\n"
-            f"The gaze stability (standard deviation: X={x_std:.3f}, Y={y_std:.3f}) suggests {'high' if gaze_stability < 0.05 else 'moderate' if gaze_stability < 0.1 else 'low'} "
-            f"consistency in gaze patterns. {'High stability may indicate focused attention or low cognitive load, potentially reflecting a calm state.' if gaze_stability < 0.05 else 'Moderate stability suggests typical engagement with some exploration, possibly indicating curiosity or moderate cognitive processing.' if gaze_stability < 0.1 else 'Low stability may suggest distractibility, high cognitive load, or emotional arousal.'}\n\n"
-            f"The detection of {fixation_count} fixation periods (sequences of stable gaze) suggests {'sustained attention on specific points, possibly indicating deep focus or processing of key information.' if fixation_count > 5 else 'intermittent focus with frequent shifts, potentially reflecting scanning behavior or divided attention.' if fixation_count > 2 else 'minimal sustained focus, which may indicate distraction or lack of engagement.'}\n\n"
-            f"Psychologically, these patterns may correlate with {'a calm and focused state, potentially conducive to effective cognitive processing.' if gaze_stability < 0.05 and fixation_count > 5 else 'a balanced state with active engagement, suitable for learning or interaction.' if gaze_stability < 0.1 and fixation_count > 2 else 'a state of potential stress, distraction, or high cognitive demand, warranting further exploration of emotional or environmental factors.'}"
+            f"Average Eyes Detected: {avg_eye_count:.2f}\n"
+            f"Gaze Position (avg): X={avg_gaze_x:.2f}, Y={avg_gaze_y:.2f}\n"
+            f"Gaze Range: X={x_range[0]:.2f}-{x_range[1]:.2f}, Y={y_range[0]:.2f}-{y_range[1]:.2f}\n"
+            f"Gaze Stability: {gaze_stability:.3f}"
         )
 
-        logger.info(f"Gaze report generated for session {request.session_id}: {valid_frames}/{total_frames} valid frames")
+        # Define attention level based on gaze stability
+        attention_level = (
+            "highly focused attention" if gaze_stability < 0.05
+            else "normal engagement" if gaze_stability < 0.1
+            else "active visual exploration"
+        )
+
+        # Define gaze distribution pattern
+        gaze_pattern = (
+            "concentrated focus" if max(x_range[1]-x_range[0], y_range[1]-y_range[0]) < 0.3
+            else "balanced visual attention" if max(x_range[1]-x_range[0], y_range[1]-y_range[0]) < 0.6
+            else "broad visual scanning"
+        )
+
+        interpretation = (
+            f"Analysis shows {valid_frames} successful eye detections out of {total_frames} frames, "
+            f"with an average of {avg_eye_count:.1f} eyes tracked per frame. "
+            f"The gaze pattern indicates {attention_level}, "
+            f"based on the gaze stability measure of {gaze_stability:.3f}. "
+            f"The gaze distribution suggests {gaze_pattern} behavior."
+        )
+
+        logger.info(f"Generated gaze report for session {request.session_id}")
 
         return GazeReportResponse(
             session_id=request.session_id,
@@ -325,8 +330,8 @@ async def generate_gaze_report(request: GazeReportRequest):
             interpretation=interpretation
         )
 
-    except HTTPException as e:
-        raise e
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"Error generating gaze report for session {request.session_id}: {str(e)}")
         return GazeReportResponse(

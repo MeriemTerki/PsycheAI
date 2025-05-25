@@ -4,7 +4,7 @@ import pandas as pd
 from datetime import datetime
 
 # Load the model
-model = YOLO("models/best_v2.pt")
+model = YOLO("models/best_v3.pt")
 
 # Initialize video capture (webcam)
 cap = cv2.VideoCapture(0)

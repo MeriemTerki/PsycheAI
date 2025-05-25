@@ -32,8 +32,8 @@ app.add_middleware(
 )
 
 # Configuration
-GAZE_CAPTURE_URL = os.getenv("GAZE_CAPTURE_URL", "http://127.0.0.1:8001/capture-eye-tracking")
-GAZE_REPORT_URL = os.getenv("GAZE_REPORT_URL", "http://127.0.0.1:8001/generate-eye-tracking-report")
+GAZE_CAPTURE_URL = os.getenv("GAZE_CAPTURE_URL", "http://localhost:8001/capture-eye-tracking")
+GAZE_REPORT_URL = os.getenv("GAZE_REPORT_URL", "http://localhost:8001/generate-eye-tracking-report")
 EMOTION_API_URL = os.getenv("EMOTION_API_URL", "http://127.0.0.1:8000/analyze-live-emotion")
 CHAT_API_URL = os.getenv("CHAT_API_URL", "http://127.0.0.1:8002/chat")
 TRANSCRIPT_GET_URL = os.getenv("TRANSCRIPT_GET_URL", "http://127.0.0.1:8002/transcript")
@@ -51,6 +51,10 @@ class SessionRequest(BaseModel):
 class GazeData(BaseModel):
     report: Optional[str] = None
     error: Optional[str] = None
+    summary: Optional[str] = None
+    stats: Optional[str] = None
+    interpretation: Optional[str] = None
+    data: Optional[List[Dict[str, Any]]] = None
 
 class EmotionData(BaseModel):
     summary: Optional[str] = None
@@ -97,13 +101,19 @@ async def generate_final_report(
     prompt = f"""
 {REPORT_SYSTEM_PROMPT}
 
-**Input Data:**
-- **Gaze Tracking Report**: {gaze_report}
-- **Emotion Recognition Data**:
-  - Summary: {emotion_data.summary or 'No data available'}
-  - Statistics: {emotion_data.stats or 'No data available'}
-  - Interpretation: {emotion_data.interpretation or 'No data available'}
-- **Conversation Transcript**: {transcript}
+Input Data:
+- Gaze Tracking Report:
+{gaze_report}
+
+- Emotion Recognition Data:
+  Summary: {emotion_data.summary or 'No data available'}
+  Statistics: {emotion_data.stats or 'No data available'}
+  Interpretation: {emotion_data.interpretation or 'No data available'}
+
+- Conversation Transcript:
+{transcript}
+
+Important: Please analyze the gaze tracking data in detail and include specific findings about eye movement patterns, attention levels, and engagement based on the provided metrics. Include this analysis in both the Summary and Interpretation sections.
 
 Please provide a structured report with Summary, Interpretation, and Recommended Treatment.
 """
@@ -123,14 +133,17 @@ Please provide a structured report with Summary, Interpretation, and Recommended
             content = resp.choices[0].message.content
             return FinalReport(report=content, timestamp=datetime.utcnow().isoformat())
         except Exception as e:
-            logger.warning(f"[{session_id}] Report generation error: {e}")
+            logger.warning(f"[{session_id}] Report generation error: {str(e)}")
             if attempt < retries and "rate_limit_exceeded" in str(e):
-                logger.info(f"[{session_id}] Retrying in {delay}s…")
+                logger.info(f"[{session_id}] Retrying in {delay}s...")
                 time.sleep(delay)
                 delay *= 2
             else:
-                logger.error(f"[{session_id}] Failed to generate report: {e}")
-                return FinalReport(report=f"Error: {e}", timestamp=datetime.utcnow().isoformat())
+                logger.error(f"[{session_id}] Failed to generate report: {str(e)}")
+                return FinalReport(
+                    report=f"Error generating report: {str(e)}", 
+                    timestamp=datetime.utcnow().isoformat()
+                )
 
 async def run_session(messages: List[Dict[str, str]], is_post: bool, gaze_data_input: Optional[List[Dict[str, Any]]], emotion_data_input: Optional[List[Dict[str, Any]]]) -> SessionResult:
     session_id = datetime.utcnow().strftime("%Y%m%d%H%M%S")
@@ -144,35 +157,44 @@ async def run_session(messages: List[Dict[str, str]], is_post: bool, gaze_data_i
     transcript = ""
 
     async with httpx.AsyncClient(timeout=120.0) as client:
-        # 1) Gaze
-        if not is_post:
+        # Process gaze data first if available
+        if gaze_data_input:
             try:
-                logger.warning(f"[{session_id}] Skipping live gaze capture due to missing frame")
-                gaze_data.error = "Live gaze capture not implemented"
-            except Exception as e:
-                logger.error(f"[{session_id}] Gaze error: {e}")
-                gaze_data.error = str(e)
-        elif gaze_data_input:
-            try:
-                r = await client.post(GAZE_REPORT_URL, json={"gaze_data": gaze_data_input, "session_id": session_id})
+                logger.info(f"[{session_id}] Processing gaze data with {len(gaze_data_input)} frames")
+                r = await client.post(
+                    GAZE_REPORT_URL,
+                    json={"session_id": session_id, "gaze_data": gaze_data_input},
+                    timeout=30.0
+                )
+                
                 if r.status_code == 200:
-                    gaze_data = GazeData(report=r.json().get("report"))
+                    gaze_report = r.json()
+                    logger.info(f"[{session_id}] Successfully received gaze report: {gaze_report}")
+                    
+                    # Properly structure the gaze tracking result
+                    gaze_data = GazeData(
+                        summary=gaze_report.get("summary"),
+                        stats=gaze_report.get("stats"),
+                        interpretation=gaze_report.get("interpretation"),
+                        data=gaze_data_input,
+                        error=None
+                    )
+                    logger.info(f"[{session_id}] Structured gaze data: {gaze_data}")
                 else:
-                    gaze_data.error = f"Report generation failed: {r.text}"
-                    logger.error(f"[{session_id}] Gaze report error: {r.text}")
+                    error_msg = f"Gaze report generation failed: {r.text}"
+                    logger.error(f"[{session_id}] {error_msg}")
+                    try:
+                        error_detail = r.json().get("detail", r.text)
+                    except:
+                        error_detail = r.text
+                    gaze_data = GazeData(error=error_detail)
             except Exception as e:
-                logger.error(f"[{session_id}] Gaze report error: {e}")
-                gaze_data.error = str(e)
+                error_msg = f"Gaze processing error: {str(e)}"
+                logger.error(f"[{session_id}] {error_msg}")
+                gaze_data = GazeData(error=error_msg)
 
-        # 2) Emotion
-        if not is_post:
-            try:
-                logger.warning(f"[{session_id}] Skipping live emotion capture due to missing frame")
-                emotion_data.error = "Live emotion capture not implemented"
-            except Exception as e:
-                logger.error(f"[{session_id}] Emotion error: {e}")
-                emotion_data.error = str(e)
-        elif emotion_data_input:
+        # Process emotion data if available
+        if emotion_data_input:
             try:
                 latest_emotion = emotion_data_input[-1] if emotion_data_input else {}
                 emotion_data = EmotionData(
@@ -184,45 +206,75 @@ async def run_session(messages: List[Dict[str, str]], is_post: bool, gaze_data_i
                 logger.error(f"[{session_id}] Emotion data processing error: {e}")
                 emotion_data.error = str(e)
 
-        # 3) Chat
-        try:
-            r = await client.post(CHAT_API_URL, json={"messages": messages})
-            chat_data = ChatData(**(r.json() if r.status_code == 200 else {"error": r.text}))
-        except Exception as e:
-            logger.error(f"[{session_id}] Chat error: {e}")
-            chat_data.error = str(e)
+        # Process chat if messages available
+        if messages:
+            try:
+                r = await client.post(CHAT_API_URL, json={"messages": messages})
+                chat_data = ChatData(**(r.json() if r.status_code == 200 else {"error": r.text}))
+            except Exception as e:
+                logger.error(f"[{session_id}] Chat error: {e}")
+                chat_data.error = str(e)
 
-        # 4) Transcript
-        try:
-            r = await client.get(TRANSCRIPT_GET_URL)
-            transcript = r.json().get("transcript", "") if r.status_code == 200 else ""
-        except Exception as e:
-            logger.error(f"[{session_id}] Transcript fetch error: {e}")
-            transcript = ""
+            try:
+                r = await client.get(TRANSCRIPT_GET_URL)
+                transcript = r.json().get("transcript", "") if r.status_code == 200 else ""
+            except Exception as e:
+                logger.error(f"[{session_id}] Transcript fetch error: {e}")
+                transcript = ""
 
+    # Generate final report
     final_report = await generate_final_report(
-        gaze_report=gaze_data.report or "No gaze data available",
+        gaze_report=gaze_data.summary or gaze_data.interpretation or "No gaze data available",
         emotion_data=emotion_data,
         transcript=transcript
     )
 
-    logger.info(f"[{session_id}] Session complete")
-    return SessionResult(
+    # Construct and return session result
+    result = SessionResult(
         session_id=session_id,
-        gaze_tracking=gaze_data,
+        gaze_tracking=gaze_data.dict(exclude_none=True),  # Convert to dict and exclude None values
         emotion_recognition=emotion_data,
         voice_chat=chat_data,
         transcript=transcript,
         final_report=final_report
     )
 
+    logger.info(f"[{session_id}] Session complete with result: {result}")
+    return result
+
 # Routes
 @app.post("/start-session", response_model=SessionResult)
 async def start_session(req: SessionRequest):
     try:
         logger.info("Received /start-session request with payload: %s", req.dict())
+        
+        if req.is_post_session:
+            logger.info("Processing post-session analysis")
+            if not req.gaze_data:
+                logger.warning("No gaze data provided for post-session analysis")
+            if not req.emotion_data:
+                logger.warning("No emotion data provided for post-session analysis")
+            
+            # Ensure we have some data to process
+            if not req.messages:
+                raise HTTPException(status_code=400, detail="No messages provided for analysis")
+
         result = await run_session(req.messages, req.is_post_session, req.gaze_data, req.emotion_data)
+        
+        # Validate result before returning
+        if not result:
+            raise HTTPException(status_code=500, detail="Failed to generate session results")
+        
+        if not result.final_report or not result.final_report.report:
+            logger.error("Missing final report in session results")
+            result.final_report = FinalReport(
+                report="Error: Failed to generate comprehensive report",
+                timestamp=datetime.utcnow().isoformat()
+            )
+        
+        logger.info("Successfully generated session results: %s", result)
         return result
+        
     except HTTPException:
         raise
     except Exception as e:
@@ -232,3 +284,40 @@ async def start_session(req: SessionRequest):
 @app.get("/")
 async def root():
     return {"message": "Unified Mental Health Assessment API"}
+
+@app.post("/generate-eye-tracking-report")
+async def generate_eye_tracking_report(request: Dict[str, Any]):
+    """
+    Generate a report from eye tracking data.
+    """
+    try:
+        session_id = request.get("session_id")
+        gaze_data = request.get("gaze_data", [])
+        
+        if not session_id:
+            raise HTTPException(status_code=400, detail="Session ID is required")
+            
+        if not gaze_data:
+            raise HTTPException(status_code=400, detail="No gaze data provided")
+
+        logger.info(f"Forwarding gaze report request for session {session_id} with {len(gaze_data)} frames")
+        
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            response = await client.post(
+                GAZE_REPORT_URL,
+                json={"session_id": session_id, "gaze_data": gaze_data},
+                timeout=30.0
+            )
+            
+            if response.status_code != 200:
+                error_msg = f"Gaze tracking service error: {response.text}"
+                logger.error(f"[{session_id}] {error_msg}")
+                raise HTTPException(status_code=response.status_code, detail=error_msg)
+                
+            return response.json()
+            
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.exception(f"Error generating eye tracking report: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))

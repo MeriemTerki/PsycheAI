@@ -502,61 +502,138 @@ const DiagnosisSection: React.FC = () => {
     }
   };
 
+  // Add debug effect for sessionResults changes
+  useEffect(() => {
+    console.log("[Debug] sessionResults changed:", {
+      hasResults: !!sessionResults,
+      sessionEnded,
+      isRecording
+    });
+  }, [sessionResults, sessionEnded, isRecording]);
+
   const endSession = async (isManual: boolean = false) => {
-    recognitionRef.current?.stop();
-    frameIntervalRef.current && clearInterval(frameIntervalRef.current);
+    console.log("[Session] Starting endSession with isManual:", isManual);
+    
+    // Stop recording and clear intervals
+    if (recognitionRef.current) {
+      recognitionRef.current.stop();
+    }
+    if (frameIntervalRef.current) {
+      clearInterval(frameIntervalRef.current);
+    }
+
+    // Update states
     setIsRecording(false);
     setSessionEnded(true);
+    setError(null);
 
-    if (isManual && transcriptLogRef.current.length) {
-      try {
-        setIsLoading(true);
+    if (!isManual || transcriptLogRef.current.length === 0) {
+      console.log("[Session] Session ended without generating report:", {
+        isManual,
+        transcriptLength: transcriptLogRef.current.length
+      });
+      return;
+    }
 
-        await fetch("http://127.0.0.1:8002/upload_transcript", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ transcript: transcriptLogRef.current.join("\n") }),
-        });
+    try {
+      setIsLoading(true);
 
-        const aggregatedResults = await aggregateResults();
-        console.log(`[Session] Aggregated results before /start-session:`, JSON.stringify(aggregatedResults, null, 2));
+      // Upload transcript
+      console.log("[Session] Uploading transcript...");
+      const transcriptResponse = await fetch("http://127.0.0.1:8002/upload_transcript", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ transcript: transcriptLogRef.current.join("\n") }),
+      });
 
-        console.log("[Session] Sending gaze_data to /start-session:", JSON.stringify(gazeResults, null, 2));
-        console.log("[Session] Sending emotion_data to /start-session:", JSON.stringify(emotionResults, null, 2));
-        const res = await fetch("http://127.0.0.1:8003/start-session", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            messages: messagesRef.current.slice(0, 5),
-            is_post_session: true,
-            gaze_data: gazeResults,
-            emotion_data: emotionResults,
-          }),
-        });
-
-        if (!res.ok) {
-          const errorText = await res.text();
-          console.error("[Session] /start-session error:", errorText);
-          throw new Error(errorText);
-        }
-        const data: SessionResults = await res.json();
-        console.log("[Session] /start-session raw response:", JSON.stringify(data, null, 2));
-
-        // If /start-session returns no gaze data, fall back to aggregatedResults
-        if (data.gaze_tracking.error || !data.gaze_tracking.summary) {
-          console.warn("[Session] /start-session returned no valid gaze data, using aggregatedResults");
-          data.gaze_tracking = aggregatedResults.gaze_tracking;
-        }
-
-        setSessionResults(data);
-      } catch (err: any) {
-        console.error("[Session] Final report error:", err);
-        setError("Failed to generate final report.");
-        const aggregatedResults = await aggregateResults();
-        setSessionResults(aggregatedResults);
-      } finally {
-        setIsLoading(false);
+      if (!transcriptResponse.ok) {
+        throw new Error(`Failed to upload transcript: ${await transcriptResponse.text()}`);
       }
+
+      // Wait for last frames to be processed
+      console.log("[Session] Waiting for frame processing...");
+      await new Promise(resolve => setTimeout(resolve, 3000));
+
+      // Log gaze data before sending
+      console.log("[Session] Collected gaze data:", {
+        count: gazeResults.length,
+        validFrames: gazeResults.filter(r => !r.error && r.eye_count && r.eye_count > 0).length,
+        sample: gazeResults.slice(0, 2)
+      });
+
+      const requestData = {
+        messages: messagesRef.current,
+        is_post_session: true,
+        gaze_data: gazeResults.map(r => ({
+          session_id: r.session_id,
+          timestamp: r.timestamp,
+          eye_count: r.eye_count,
+          gaze_points: r.gaze_points,
+          error: r.error
+        })),
+        emotion_data: emotionResults,
+      };
+
+      console.log("[Session] Sending final request with data:", {
+        messageCount: requestData.messages.length,
+        gazeDataCount: requestData.gaze_data.length,
+        emotionDataCount: requestData.emotion_data.length
+      });
+
+      // Get final results
+      const res = await fetch("http://127.0.0.1:8003/start-session", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(requestData),
+      });
+
+      const responseText = await res.text();
+      console.log("[Session] Raw response:", responseText);
+
+      if (!res.ok) {
+        throw new Error(`Server error: ${responseText}`);
+      }
+
+      let data;
+      try {
+        data = JSON.parse(responseText);
+      } catch (e) {
+        throw new Error('Failed to parse server response as JSON');
+      }
+
+      console.log("[Session] Parsed response data:", data);
+      
+      if (!data || typeof data !== 'object') {
+        throw new Error('Invalid response format from server');
+      }
+
+      if (!data.gaze_tracking || !data.emotion_recognition || !data.final_report) {
+        throw new Error('Missing required fields in server response');
+      }
+
+      // Update session results
+      setSessionResults(data);
+      console.log("[Session] Updated session results state with:", data);
+
+    } catch (err) {
+      const errorMessage = err instanceof Error ? err.message : String(err);
+      console.error("[Session] Final report error:", errorMessage);
+      setError(`Failed to generate final report: ${errorMessage}`);
+      
+      // Set minimal results to show error state
+      setSessionResults({
+        session_id: new Date().toISOString(),
+        gaze_tracking: { error: "Failed to process gaze data" },
+        emotion_recognition: { error: "Failed to process emotion data" },
+        voice_chat: { error: "Failed to process conversation" },
+        transcript: transcriptLogRef.current.join("\n"),
+        final_report: {
+          report: `Error generating report: ${errorMessage}`,
+          timestamp: new Date().toISOString()
+        }
+      });
+    } finally {
+      setIsLoading(false);
     }
   };
 
@@ -796,13 +873,29 @@ const DiagnosisSection: React.FC = () => {
           </div>
         )}
       </div>
-      {sessionEnded && sessionResults && (
+      {sessionEnded && (
         <div style={{ gridColumn: "1 / -1" }}>
-          <DiagnosisResults
-            isVisible={sessionEnded}
-            conversation={conversation}
-            sessionResults={sessionResults}
-          />
+          {sessionResults ? (
+            <DiagnosisResults
+              isVisible={true}
+              conversation={conversation}
+              sessionResults={sessionResults}
+            />
+          ) : (
+            <div style={{ 
+              padding: "20px", 
+              textAlign: "center", 
+              backgroundColor: "#f3f4f6",
+              borderRadius: "8px",
+              marginTop: "20px"
+            }}>
+              {isLoading ? (
+                <p>Generating final report...</p>
+              ) : (
+                <p>Waiting for results...</p>
+              )}
+            </div>
+          )}
         </div>
       )}
     </div>
