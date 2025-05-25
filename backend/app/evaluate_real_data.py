@@ -375,6 +375,104 @@ class GeminiEvaluator:
             "summary": error_message
         }
 
+def format_evaluation_report(session_id: str, conversation_eval: Dict, report_eval: Dict, timestamp: str) -> str:
+    """
+    Format the evaluation results into a structured, readable text report.
+    """
+    report = []
+    report.append("=" * 80)
+    report.append(f"THERAPY SESSION EVALUATION REPORT")
+    report.append(f"Session ID: {session_id}")
+    report.append(f"Timestamp: {timestamp}")
+    report.append("=" * 80)
+
+    # Conversation Evaluation Section
+    report.append("\n1. THERAPEUTIC CONVERSATION EVALUATION")
+    report.append("-" * 40)
+    
+    # Therapeutic Quality
+    report.append("\na) Therapeutic Quality")
+    report.append(f"Score: {conversation_eval['therapeutic_quality']['score']}/5")
+    report.append(f"Analysis: {conversation_eval['therapeutic_quality']['analysis']}")
+    report.append("\nExamples:")
+    for example in conversation_eval['therapeutic_quality']['examples']:
+        report.append(f"- {example}")
+
+    # Safety and Ethics
+    report.append("\nb) Safety and Ethics")
+    report.append(f"Score: {conversation_eval['safety_ethics']['score']}/5")
+    report.append(f"Analysis: {conversation_eval['safety_ethics']['analysis']}")
+    report.append("\nExamples:")
+    for example in conversation_eval['safety_ethics']['examples']:
+        report.append(f"- {example}")
+
+    # Clinical Appropriateness
+    report.append("\nc) Clinical Appropriateness")
+    report.append(f"Score: {conversation_eval['clinical_appropriateness']['score']}/5")
+    report.append(f"Analysis: {conversation_eval['clinical_appropriateness']['analysis']}")
+    report.append("\nExamples:")
+    for example in conversation_eval['clinical_appropriateness']['examples']:
+        report.append(f"- {example}")
+
+    report.append(f"\nOverall Conversation Score: {conversation_eval['overall_score']}/5")
+    
+    # Key Findings for Conversation
+    report.append("\nKey Strengths:")
+    for strength in conversation_eval['key_strengths']:
+        report.append(f"- {strength}")
+    
+    report.append("\nAreas for Improvement:")
+    for area in conversation_eval['areas_for_improvement']:
+        report.append(f"- {area}")
+
+    # Final Report Evaluation Section
+    report.append("\n\n2. FINAL REPORT EVALUATION")
+    report.append("-" * 40)
+    
+    # Clinical Value
+    report.append("\na) Clinical Value")
+    report.append(f"Score: {report_eval['clinical_value']['score']}/5")
+    report.append(f"Analysis: {report_eval['clinical_value']['analysis']}")
+    report.append("\nExamples:")
+    for example in report_eval['clinical_value']['examples']:
+        report.append(f"- {example}")
+
+    # Professional Standards
+    report.append("\nb) Professional Standards")
+    report.append(f"Score: {report_eval['professional_standards']['score']}/5")
+    report.append(f"Analysis: {report_eval['professional_standards']['analysis']}")
+    report.append("\nExamples:")
+    for example in report_eval['professional_standards']['examples']:
+        report.append(f"- {example}")
+
+    # Communication Quality
+    report.append("\nc) Communication Quality")
+    report.append(f"Score: {report_eval['communication_quality']['score']}/5")
+    report.append(f"Analysis: {report_eval['communication_quality']['analysis']}")
+    report.append("\nExamples:")
+    for example in report_eval['communication_quality']['examples']:
+        report.append(f"- {example}")
+
+    report.append(f"\nOverall Report Score: {report_eval['overall_score']}/5")
+    
+    # Key Findings for Report
+    report.append("\nKey Strengths:")
+    for strength in report_eval['key_strengths']:
+        report.append(f"- {strength}")
+    
+    report.append("\nAreas for Improvement:")
+    for area in report_eval['areas_for_improvement']:
+        report.append(f"- {area}")
+
+    # Overall Summary
+    report.append("\n\n3. EVALUATION SUMMARY")
+    report.append("-" * 40)
+    report.append(f"\nConversation Summary: {conversation_eval['summary']}")
+    report.append(f"\nReport Summary: {report_eval['summary']}")
+    
+    report.append("\n" + "=" * 80)
+    return "\n".join(report)
+
 async def evaluate_session(session_id: str) -> Dict[str, Any]:
     """
     Evaluate both the conversation and final report for a session.
@@ -399,13 +497,36 @@ async def evaluate_session(session_id: str) -> Dict[str, Any]:
             
             try:
                 # Get report from main backend
-                report_response = await client.get(os.getenv("REPORT_GET_URL", "http://127.0.0.1:8003/get-report"))
-                report_response.raise_for_status()
-                report_data = report_response.json()
-                final_report = report_data.get("report", "") if isinstance(report_data, dict) else ""
-                logger.info("Successfully retrieved report")
+                report_url = os.getenv("REPORT_GET_URL", "http://127.0.0.1:8003/get-report")
+                logger.info(f"Fetching report from: {report_url}")
+                report_response = await client.get(report_url)
+                
+                # Log the response for debugging
+                logger.info(f"Report response status: {report_response.status_code}")
+                logger.info(f"Report response headers: {report_response.headers}")
+                
+                try:
+                    response_json = report_response.json()
+                    logger.info(f"Report response content: {response_json}")
+                    final_report = response_json.get("report", "")
+                except json.JSONDecodeError as e:
+                    logger.error(f"Failed to parse report response as JSON: {str(e)}")
+                    logger.error(f"Raw response content: {report_response.text}")
+                    final_report = ""
+
+                if final_report:
+                    logger.info("Successfully retrieved report")
+                else:
+                    logger.warning("Report is empty")
+                    
             except httpx.HTTPError as e:
                 logger.error(f"Error fetching report: {str(e)}")
+                if e.response:
+                    try:
+                        error_detail = e.response.json().get("detail", str(e))
+                    except:
+                        error_detail = e.response.text or str(e)
+                    logger.error(f"Server error detail: {error_detail}")
                 if e.response and e.response.status_code == 404:
                     logger.warning("No report found. Will generate one from transcript.")
                 elif e.response and e.response.status_code == 500:
@@ -431,11 +552,27 @@ async def evaluate_session(session_id: str) -> Dict[str, Any]:
         # Evaluate final report
         report_eval = await evaluator.evaluate_final_report(final_report)
 
+        # Generate timestamp
+        timestamp = datetime.utcnow().isoformat()
+
+        # Format the evaluation as a structured text report
+        formatted_report = format_evaluation_report(session_id, conversation_eval, report_eval, timestamp)
+
+        # Save the report to a text file
+        report_filename = f"evaluation_report_{session_id}.txt"
+        try:
+            with open(report_filename, "w", encoding="utf-8") as f:
+                f.write(formatted_report)
+            logger.info(f"Evaluation report saved to {report_filename}")
+        except Exception as e:
+            logger.error(f"Error saving report to file: {e}")
+
         return {
             "session_id": session_id,
-            "timestamp": datetime.utcnow().isoformat(),
+            "timestamp": timestamp,
             "conversation_evaluation": conversation_eval,
             "report_evaluation": report_eval,
+            "report_file": report_filename,
             "error": None
         }
 

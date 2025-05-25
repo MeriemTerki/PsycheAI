@@ -336,8 +336,20 @@ async def get_report():
     """
     try:
         if last_generated_report is None:
-            raise HTTPException(status_code=404, detail="No report has been generated yet")
-        return last_generated_report
+            # Return empty report instead of raising an error
+            return {
+                "report": "",
+                "timestamp": datetime.utcnow().isoformat()
+            }
+        # Convert FinalReport to dict before returning
+        return {
+            "report": last_generated_report.report,
+            "timestamp": last_generated_report.timestamp
+        }
     except Exception as e:
         logger.error(f"Error retrieving report: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        # Return empty report instead of raising an error
+        return {
+            "report": "",
+            "timestamp": datetime.utcnow().isoformat()
+        }
