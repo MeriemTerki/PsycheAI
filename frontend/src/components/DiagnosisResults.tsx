@@ -68,6 +68,169 @@ const DiagnosisResults: React.FC<DiagnosisResultsProps> = ({ isVisible, conversa
   const { session_id, gaze_tracking, emotion_recognition, transcript, final_report } = sessionResults;
   const formattedSessionId = session_id.replace(/\.\d{3}Z$/, "").replace(/[-:T]/g, "");
 
+  // Helper to format report sections
+  const formatReportSection = (content: string): React.ReactNode => {
+    // Split content into subsections and filter out empty ones
+    const subsections = content
+      .split(/(?=Gaze Tracking Report|Emotion Recognition Data|Conversation Transcript|Assistant provided)/g)
+      .map(section => section.trim())
+      .filter(section => section.length > 0 && !section.match(/^[•.*\s]*$/));
+
+    return (
+      <div style={{ display: "flex", flexDirection: "column", gap: "20px" }}>
+        {subsections.map((subsection, index) => {
+          // Extract title and content
+          let title = '';
+          let subsectionContent = '';
+
+          if (subsection.startsWith('Gaze Tracking Report')) {
+            title = 'Gaze Tracking Report';
+            subsectionContent = subsection.replace('Gaze Tracking Report', '').trim();
+          } else if (subsection.startsWith('Emotion Recognition Data')) {
+            title = 'Emotion Recognition Data';
+            subsectionContent = subsection.replace('Emotion Recognition Data', '').trim();
+          } else if (subsection.startsWith('Conversation Transcript')) {
+            title = 'Conversation Transcript';
+            subsectionContent = subsection.replace('Conversation Transcript', '').trim();
+          } else if (subsection.startsWith('Assistant provided')) {
+            title = 'Assistant Support';
+            subsectionContent = subsection.replace('Assistant provided', '').trim();
+          } else {
+            // Skip sections without proper titles
+            return null;
+          }
+
+          // Remove any leading colons and clean up the content
+          subsectionContent = subsectionContent.replace(/^:\s*/, '').trim();
+          
+          // Skip if no content after removing title
+          if (!subsectionContent) return null;
+
+          // Remove duplicate content by checking if it's already included
+          const cleanedContent = subsectionContent.split('•')
+            .map(point => point.trim())
+            .filter((point, i, arr) => point.length > 0 && arr.indexOf(point) === i)
+            .join('\n• ');
+
+          return (
+            <div key={index} style={{
+              backgroundColor: "#ffffff",
+              padding: "20px",
+              borderRadius: "8px",
+              border: "1px solid #e5e7eb",
+              boxShadow: "0 1px 2px rgba(0, 0, 0, 0.05)"
+            }}>
+              {/* Subsection Title */}
+              <div style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: '12px',
+                marginBottom: '16px'
+              }}>
+                <div style={{
+                  width: '4px',
+                  height: '24px',
+                  backgroundColor: '#3b82f6',
+                  borderRadius: '2px'
+                }} />
+                <h4 style={{
+                  fontSize: "16px",
+                  fontWeight: "600",
+                  color: "#1f2937",
+                  margin: 0
+                }}>
+                  {title}
+                </h4>
+              </div>
+
+              {/* Subsection Content */}
+              <div style={{
+                backgroundColor: "#f8fafc",
+                padding: "16px",
+                borderRadius: "6px",
+                color: "#374151",
+                lineHeight: "1.6",
+                fontSize: "15px"
+              }}>
+                {cleanedContent}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    );
+  };
+
+  // Helper to format treatment recommendations
+  const formatTreatmentSection = (content: string): React.ReactNode => {
+    // Split content into numbered sections and clean up the content
+    const sections = content
+      .split(/\d+\./)
+      .map(section => section.trim())
+      .filter(section => section.length > 0)
+      .map(section => {
+        // Remove both ** and single * symbols
+        return section
+          .replace(/\*\*/g, '')
+          .replace(/\*/g, '')
+          .trim();
+      });
+
+    return (
+      <div style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
+        {sections.map((section, index) => {
+          const [title, ...details] = section.split(':').map(s => s.trim());
+          if (!title) return null;
+
+          return (
+            <div key={index} style={{ 
+              backgroundColor: "#ffffff",
+              padding: "20px",
+              borderRadius: "8px",
+              border: "1px solid #e5e7eb",
+              boxShadow: "0 1px 2px rgba(0, 0, 0, 0.05)"
+            }}>
+              <div style={{ display: "flex", alignItems: "center", gap: "12px", marginBottom: "12px" }}>
+                <span style={{
+                  backgroundColor: "#3b82f6",
+                  color: "white",
+                  width: "24px",
+                  height: "24px",
+                  borderRadius: "50%",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  fontSize: "14px",
+                  fontWeight: "600"
+                }}>
+                  {index + 1}
+                </span>
+                <h4 style={{ 
+                  margin: 0,
+                  color: "#1f2937",
+                  fontSize: "16px",
+                  fontWeight: "600"
+                }}>
+                  {title}
+                </h4>
+              </div>
+              {details.length > 0 && (
+                <div style={{ 
+                  marginLeft: "36px",
+                  color: "#374151",
+                  lineHeight: "1.6",
+                  fontSize: "15px"
+                }}>
+                  {details.join(':')}
+                </div>
+              )}
+            </div>
+          );
+        })}
+      </div>
+    );
+  };
+
   // Helper to render a section with title and content
   const renderSection = (title: string, content: React.ReactNode) => (
     <div style={{
@@ -134,70 +297,45 @@ const DiagnosisResults: React.FC<DiagnosisResultsProps> = ({ isVisible, conversa
 
   // Helper to format the comprehensive report
   const formatComprehensiveReport = (report: string) => {
-    // Split the report into sections based on markdown-style headers
-    const sections = report.split(/\*\*(.*?)\*\*/g).filter(Boolean);
+    // Split the report into main sections
+    const sections = report.split(/(?=Summary:|Recommended Treatment:)/g);
     
     return (
       <div style={{ display: "flex", flexDirection: "column", gap: "24px" }}>
         {sections.map((section, index) => {
-          if (index % 2 === 0) { // Content
+          const [title, ...content] = section.trim().split('\n');
+          const sectionContent = content.join('\n').trim();
+
+          if (title.includes('Summary:')) {
             return (
-              <div key={index} style={{ 
-                backgroundColor: "#ffffff",
-                padding: "16px",
-                borderRadius: "8px",
-                boxShadow: "0 1px 2px rgba(0, 0, 0, 0.05)"
-              }}>
-                {section.split('\n').map((line, i) => {
-                  // Handle bullet points
-                  if (line.trim().startsWith('*') || line.trim().startsWith('-')) {
-                    return (
-                      <li key={i} style={{ 
-                        marginLeft: "24px",
-                        marginBottom: "8px",
-                        color: "#374151",
-                        lineHeight: "1.6"
-                      }}>
-                        {line.trim().replace(/^[*-]\s*/, '')}
-                      </li>
-                    );
-                  }
-                  // Handle regular paragraphs
-                  if (line.trim()) {
-                    return (
-                      <p key={i} style={{ 
-                        marginBottom: "12px", 
-                        color: "#374151",
-                        lineHeight: "1.6"
-                      }}>
-                        {line}
-                      </p>
-                    );
-                  }
-                  return null;
-                })}
+              <div key={index}>
+                {formatReportSection(sectionContent)}
               </div>
             );
-          } else { // Section title
+          } else if (title.includes('Recommended Treatment:')) {
             return (
-              <div key={index} style={{
-                backgroundColor: "#f0f9ff",
-                padding: "12px 16px",
-                borderRadius: "8px",
-                borderLeft: "4px solid #3b82f6",
-                marginTop: index === 1 ? 0 : "16px"
-              }}>
-                <h5 style={{
-                  fontSize: "18px",
-                  fontWeight: "600",
-                  color: "#1f2937",
-                  margin: 0
+              <div key={index}>
+                <div style={{
+                  backgroundColor: "#f0f9ff",
+                  padding: "12px 16px",
+                  borderRadius: "8px",
+                  borderLeft: "4px solid #3b82f6",
+                  marginBottom: "16px"
                 }}>
-                  {section}
-                </h5>
+                  <h3 style={{
+                    fontSize: "20px",
+                    fontWeight: "600",
+                    color: "#1f2937",
+                    margin: 0
+                  }}>
+                    Recommended Treatment
+                  </h3>
+                </div>
+                {formatTreatmentSection(sectionContent)}
               </div>
             );
           }
+          return null;
         })}
       </div>
     );
@@ -422,8 +560,8 @@ const DiagnosisResults: React.FC<DiagnosisResultsProps> = ({ isVisible, conversa
 
   return (
     <div style={{
-        marginTop: "32px",
-        padding: "24px",
+      marginTop: "32px",
+      padding: "24px",
       backgroundColor: "#f9fafb",
       borderRadius: "12px",
       border: "1px solid #e5e7eb"
@@ -439,7 +577,7 @@ const DiagnosisResults: React.FC<DiagnosisResultsProps> = ({ isVisible, conversa
           fontWeight: "bold",
           color: "#111827"
         }}>
-          Mental Health Assessment Report
+          Comprehensive Mental Health Assessment Report
       </h2>
         <div style={{ display: "flex", gap: "12px" }}>
         <button
@@ -501,11 +639,7 @@ const DiagnosisResults: React.FC<DiagnosisResultsProps> = ({ isVisible, conversa
       {renderSection("Gaze Tracking Analysis", formatGazeAnalysis(gaze_tracking))}
       {renderSection("Emotion Recognition Analysis", renderAnalysisData(emotion_recognition))}
       
-      {renderSection("Comprehensive Assessment", (
-        <div style={{ color: "#1f2937" }}>
-          {formatComprehensiveReport(final_report.report)}
-        </div>
-      ))}
+      {renderSection("Summary", formatComprehensiveReport(final_report.report))}
     </div>
   );
 };

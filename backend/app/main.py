@@ -116,10 +116,28 @@ Input Data:
 - Conversation Transcript:
 {transcript}
 
-Important: Please analyze the gaze tracking data in detail and include specific findings about eye movement patterns, attention levels, and engagement based on the provided metrics. Include this analysis in both the Summary and Interpretation sections.
+Please provide a structured report in the following format:
 
-Please provide a structured report with Summary, Interpretation, and Recommended Treatment.
+Summary:
+• Gaze Tracking Report: [key findings]
+• Emotion Recognition Data: [key findings]
+• User appears [emotional state] based on facial features
+• Conversation Transcript: [key points from conversation]
+• Assistant provided [type of support]
+
+Recommended Treatment:
+1. [Treatment Type]:
+   [Description and rationale]
+2. [Treatment Type]:
+   [Description and rationale]
+3. [Treatment Type]:
+   [Description and rationale]
+4. [Treatment Type]:
+   [Description and rationale]
+
+Please ensure each point is clearly separated with bullet points (•) in the Summary section and numbered points in the Recommended Treatment section.
 """
+
     retries, delay = 3, 60
     for attempt in range(1, retries + 1):
         try:
@@ -134,6 +152,13 @@ Please provide a structured report with Summary, Interpretation, and Recommended
                 max_tokens=1000
             )
             content = resp.choices[0].message.content
+
+            # Ensure proper formatting
+            if not content.startswith("Summary:"):
+                content = "Summary:\n" + content
+            if "Recommended Treatment:" not in content:
+                content += "\n\nRecommended Treatment:\nNo specific treatment recommendations available."
+
             return FinalReport(report=content, timestamp=datetime.utcnow().isoformat())
         except Exception as e:
             logger.warning(f"[{session_id}] Report generation error: {str(e)}")
@@ -144,7 +169,7 @@ Please provide a structured report with Summary, Interpretation, and Recommended
             else:
                 logger.error(f"[{session_id}] Failed to generate report: {str(e)}")
                 return FinalReport(
-                    report=f"Error generating report: {str(e)}", 
+                    report="Error generating report: " + str(e),
                     timestamp=datetime.utcnow().isoformat()
                 )
 
