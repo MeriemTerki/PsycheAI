@@ -103,7 +103,6 @@ graph TD
     OutputSpeaker(Audio Output - Speaker)
 
     subgraph voice_agent_subgraph["Voice Agent"]
-        direction TD
         DeepgramSTT(Deepgram STT Client)
         TransEvents{Transcription Events}
         TranscriptBuffer[Transcript Buffer]
