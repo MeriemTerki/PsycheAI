@@ -34,17 +34,17 @@ graph TD
         K
     end
 
-    style A fill:#DCE775,stroke:#4CAF50,stroke-width:2px
-    style B fill:#81D4FA,stroke:#2196F3,stroke-width:2px
-    style C fill:#BA68C8,stroke:#9C27B0,stroke-width:2px
-    style D fill:#FFD54F,stroke:#FFC107,stroke-width:2px
-    style E fill:#EF9A9A,stroke:#F44336,stroke-width:2px
-    style F fill:#FFF8DC,stroke:#FFEB3B,stroke-width:2px
-    style G fill:#FFF8DC,stroke:#FFEB3B,stroke-width:2px
-    style H fill:#FFF8DC,stroke:#FFEB3B,stroke-width:2px
-    style I fill:#FFF8DC,stroke:#FFEB3B,stroke-width:2px
-    style J fill:#FFF8DC,stroke:#FFEB3B,stroke-width:2px
-    style K fill:#FFF8DC,stroke:#FFEB3B,stroke-width:2px
+    style A fill:#DCE775,stroke:#4CAF50,stroke-width:2px,font-fill:#FFFFFF
+    style B fill:#81D4FA,stroke:#2196F3,stroke-width:2px,font-fill:#FFFFFF
+    style C fill:#BA68C8,stroke:#9C27B0,stroke-width:2px,font-fill:#FFFFFF
+    style D fill:#FFD54F,stroke:#FFC107,stroke-width:2px,font-fill:#FFFFFF
+    style E fill:#EF9A9A,stroke:#F44336,stroke-width:2px,font-fill:#FFFFFF
+    style F fill:#FFF8DC,stroke:#FFEB3B,stroke-width:2px,font-fill:#FFFFFF
+    style G fill:#FFF8DC,stroke:#FFEB3B,stroke-width:2px,font-fill:#FFFFFF
+    style H fill:#FFF8DC,stroke:#FFEB3B,stroke-width:2px,font-fill:#FFFFFF
+    style I fill:#FFF8DC,stroke:#FFEB3B,stroke-width:2px,font-fill:#FFFFFF
+    style J fill:#FFF8DC,stroke:#FFEB3B,stroke-width:2px,font-fill:#FFFFFF
+    style K fill:#FFF8DC,stroke:#FFEB3B,stroke-width:2px,font-fill:#FFFFFF
 
 ```
 *Figure 1: Overall Project Architecture Diagram. This diagram illustrates the high-level components of the system, showing how the Frontend interacts with the Backend Orchestrator, which in turn communicates with various microservices and external APIs (Groq, Deepgram, Pinecone/Cohere).* 
@@ -99,57 +99,57 @@ sequenceDiagram
 
 ```mermaid
 graph TD
-    A[Live Audio Input (Microphone)]
-    B(Deepgram STT Client)
-    C{Transcription Events}
-    D[Transcript Buffer]
-    E[User Message Processing]
-    F{Groq Chat API}
-    G[Cohere Embeddings]
-    H[Pinecone Vector DB]
-    I[RAG Context Retrieval]
-    J[AI Text Response]
-    K(Deepgram TTS Client)
-    L[Audio Output (Speaker)]
+    InputMic[Live Audio Input (Microphone)]
+    DeepgramSTT(Deepgram STT Client)
+    TransEvents{Transcription Events}
+    TranscriptBuffer[Transcript Buffer]
+    UserMsgProc[User Message Processing]
+    GroqChat{Groq Chat API}
+    CohereEmbed[Cohere Embeddings]
+    PineconeDB[Pinecone Vector DB]
+    RAGContext[RAG Context Retrieval]
+    AIText[AI Text Response]
+    DeepgramTTS(Deepgram TTS Client)
+    OutputSpeaker[Audio Output (Speaker)]
 
-    A --> B
-    B --> C
-    C --> D
-    D --> E
-    E --> F
-    E --> G
-    G --> H
-    H --> I
-    I --> F
-    F --> J
-    J --> K
-    K --> L
+    InputMic --> DeepgramSTT
+    DeepgramSTT --> TransEvents
+    TransEvents --> TranscriptBuffer
+    TranscriptBuffer --> UserMsgProc
+    UserMsgProc --> GroqChat
+    UserMsgProc --> CohereEmbed
+    CohereEmbed --> PineconeDB
+    PineconeDB --> RAGContext
+    RAGContext --> GroqChat
+    GroqChat --> AIText
+    AIText --> DeepgramTTS
+    DeepgramTTS --> OutputSpeaker
 
     subgraph Voice Agent (`backend/voiceAgent`)
-        B
-        C
-        D
-        E
-        F
-        G
-        H
-        I
-        J
-        K
+        DeepgramSTT
+        TransEvents
+        TranscriptBuffer
+        UserMsgProc
+        GroqChat
+        CohereEmbed
+        PineconeDB
+        RAGContext
+        AIText
+        DeepgramTTS
     end
 
-    style A fill:#DCE775,stroke:#4CAF50,stroke-width:2px
-    style L fill:#DCE775,stroke:#4CAF50,stroke-width:2px
-    style B fill:#81D4FA,stroke:#2196F3,stroke-width:2px
-    style C fill:#BA68C8,stroke:#9C27B0,stroke-width:2px
-    style D fill:#FFD54F,stroke:#FFC107,stroke-width:2px
-    style E fill:#EF9A9A,stroke:#F44336,stroke-width:2px
-    style F fill:#FFF8DC,stroke:#FFEB3B,stroke-width:2px
-    style G fill:#FFF8DC,stroke:#FFEB3B,stroke-width:2px
-    style H fill:#FFF8DC,stroke:#FFEB3B,stroke-width:2px
-    style I fill:#FFF8DC,stroke:#FFEB3B,stroke-width:2px
-    style J fill:#FFF8DC,stroke:#FFEB3B,stroke-width:2px
-    style K fill:#FFF8DC,stroke:#FFEB3B,stroke-width:2px
+    style InputMic fill:#DCE775,stroke:#4CAF50,stroke-width:2px,font-fill:#FFFFFF
+    style OutputSpeaker fill:#DCE775,stroke:#4CAF50,stroke-width:2px,font-fill:#FFFFFF
+    style DeepgramSTT fill:#81D4FA,stroke:#2196F3,stroke-width:2px,font-fill:#FFFFFF
+    style TransEvents fill:#BA68C8,stroke:#9C27B0,stroke-width:2px,font-fill:#FFFFFF
+    style TranscriptBuffer fill:#FFD54F,stroke:#FFC107,stroke-width:2px,font-fill:#FFFFFF
+    style UserMsgProc fill:#EF9A9A,stroke:#F44336,stroke-width:2px,font-fill:#FFFFFF
+    style GroqChat fill:#FFF8DC,stroke:#FFEB3B,stroke-width:2px,font-fill:#FFFFFF
+    style CohereEmbed fill:#FFF8DC,stroke:#FFEB3B,stroke-width:2px,font-fill:#FFFFFF
+    style PineconeDB fill:#FFF8DC,stroke:#FFEB3B,stroke-width:2px,font-fill:#FFFFFF
+    style RAGContext fill:#FFF8DC,stroke:#FFEB3B,stroke-width:2px,font-fill:#FFFFFF
+    style AIText fill:#FFF8DC,stroke:#FFEB3B,stroke-width:2px,font-fill:#FFFFFF
+    style DeepgramTTS fill:#FFF8DC,stroke:#FFEB3B,stroke-width:2px,font-fill:#FFFFFF
 
 ```
 *Figure 3: Voice Agent Internal Components and Data Flow. This diagram details the internal mechanisms of the Voice Agent, from live audio input to text processing, RAG integration, LLM interaction, and audio output.*
