@@ -34,17 +34,17 @@ graph TD
         K
     end
 
-    style A fill:#DCE775,stroke:#4CAF50,stroke-width:2px,font-fill:#FFFFFF
-    style B fill:#81D4FA,stroke:#2196F3,stroke-width:2px,font-fill:#FFFFFF
-    style C fill:#BA68C8,stroke:#9C27B0,stroke-width:2px,font-fill:#FFFFFF
-    style D fill:#FFD54F,stroke:#FFC107,stroke-width:2px,font-fill:#FFFFFF
-    style E fill:#EF9A9A,stroke:#F44336,stroke-width:2px,font-fill:#FFFFFF
-    style F fill:#FFF8DC,stroke:#FFEB3B,stroke-width:2px,font-fill:#FFFFFF
-    style G fill:#FFF8DC,stroke:#FFEB3B,stroke-width:2px,font-fill:#FFFFFF
-    style H fill:#FFF8DC,stroke:#FFEB3B,stroke-width:2px,font-fill:#FFFFFF
-    style I fill:#FFF8DC,stroke:#FFEB3B,stroke-width:2px,font-fill:#FFFFFF
-    style J fill:#FFF8DC,stroke:#FFEB3B,stroke-width:2px,font-fill:#FFFFFF
-    style K fill:#FFF8DC,stroke:#FFEB3B,stroke-width:2px,font-fill:#FFFFFF
+    style A fill:#DCE775,stroke:#4CAF50,stroke-width:2px,color:#000000
+    style B fill:#81D4FA,stroke:#2196F3,stroke-width:2px,color:#000000
+    style C fill:#BA68C8,stroke:#9C27B0,stroke-width:2px,color:#000000
+    style D fill:#FFD54F,stroke:#FFC107,stroke-width:2px,color:#000000
+    style E fill:#EF9A9A,stroke:#F44336,stroke-width:2px,color:#000000
+    style F fill:#FFF8DC,stroke:#FFEB3B,stroke-width:2px,color:#000000
+    style G fill:#FFF8DC,stroke:#FFEB3B,stroke-width:2px,color:#000000
+    style H fill:#FFF8DC,stroke:#FFEB3B,stroke-width:2px,color:#000000
+    style I fill:#FFF8DC,stroke:#FFEB3B,stroke-width:2px,color:#000000
+    style J fill:#FFF8DC,stroke:#FFEB3B,stroke-width:2px,color:#000000
+    style K fill:#FFF8DC,stroke:#FFEB3B,stroke-width:2px,color:#000000
 
 ```
 *Figure 1: Overall Project Architecture Diagram. This diagram illustrates the high-level components of the system, showing how the Frontend interacts with the Backend Orchestrator, which in turn communicates with various microservices and external APIs (Groq, Deepgram, Pinecone/Cohere).* 
@@ -128,18 +128,18 @@ graph TD
     AIText --> DeepgramTTS
     DeepgramTTS --> OutputSpeaker
 
-    style InputMic fill:#DCE775,stroke:#4CAF50,stroke-width:2px
-    style OutputSpeaker fill:#DCE775,stroke:#4CAF50,stroke-width:2px
-    style DeepgramSTT fill:#81D4FA,stroke:#2196F3,stroke-width:2px
-    style TransEvents fill:#BA68C8,stroke:#9C27B0,stroke-width:2px
-    style TranscriptBuffer fill:#FFD54F,stroke:#FFC107,stroke-width:2px
-    style UserMsgProc fill:#EF9A9A,stroke:#F44336,stroke-width:2px
-    style GroqChat fill:#FFF8DC,stroke:#FFEB3B,stroke-width:2px
-    style CohereEmbed fill:#FFF8DC,stroke:#FFEB3B,stroke-width:2px
-    style PineconeDB fill:#FFF8DC,stroke:#FFEB3B,stroke-width:2px
-    style RAGContext fill:#FFF8DC,stroke:#FFEB3B,stroke-width:2px
-    style AIText fill:#FFF8DC,stroke:#FFEB3B,stroke-width:2px
-    style DeepgramTTS fill:#FFF8DC,stroke:#FFEB3B,stroke-width:2px
+    style InputMic fill:#DCE775,stroke:#4CAF50,stroke-width:2px,color:#000000
+    style OutputSpeaker fill:#DCE775,stroke:#4CAF50,stroke-width:2px,color:#000000
+    style DeepgramSTT fill:#81D4FA,stroke:#2196F3,stroke-width:2px,color:#000000
+    style TransEvents fill:#BA68C8,stroke:#9C27B0,stroke-width:2px,color:#000000
+    style TranscriptBuffer fill:#FFD54F,stroke:#FFC107,stroke-width:2px,color:#000000
+    style UserMsgProc fill:#EF9A9A,stroke:#F44336,stroke-width:2px,color:#000000
+    style GroqChat fill:#FFF8DC,stroke:#FFEB3B,stroke-width:2px,color:#000000
+    style CohereEmbed fill:#FFF8DC,stroke:#FFEB3B,stroke-width:2px,color:#000000
+    style PineconeDB fill:#FFF8DC,stroke:#FFEB3B,stroke-width:2px,color:#000000
+    style RAGContext fill:#FFF8DC,stroke:#FFEB3B,stroke-width:2px,color:#000000
+    style AIText fill:#FFF8DC,stroke:#FFEB3B,stroke-width:2px,color:#000000
+    style DeepgramTTS fill:#FFF8DC,stroke:#FFEB3B,stroke-width:2px,color:#000000
     style voice_agent_subgraph fill:#C0C0C0,stroke:#808080,stroke-width:2px,color:#000000
 
 ```
