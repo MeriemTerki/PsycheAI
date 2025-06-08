@@ -99,7 +99,7 @@ sequenceDiagram
 
 ```mermaid
 graph TD
-    InputMic[Live Audio Input (Microphone)]
+    InputMic(Live Audio Input - Microphone)
     DeepgramSTT(Deepgram STT Client)
     TransEvents{Transcription Events}
     TranscriptBuffer[Transcript Buffer]
@@ -110,7 +110,7 @@ graph TD
     RAGContext[RAG Context Retrieval]
     AIText[AI Text Response]
     DeepgramTTS(Deepgram TTS Client)
-    OutputSpeaker[Audio Output (Speaker)]
+    OutputSpeaker(Audio Output - Speaker)
 
     InputMic --> DeepgramSTT
     DeepgramSTT --> TransEvents
@@ -125,7 +125,7 @@ graph TD
     AIText --> DeepgramTTS
     DeepgramTTS --> OutputSpeaker
 
-    subgraph Voice Agent (`backend/voiceAgent`)
+    subgraph Voice Agent (backend/voiceAgent)
         DeepgramSTT
         TransEvents
         TranscriptBuffer
@@ -138,18 +138,18 @@ graph TD
         DeepgramTTS
     end
 
-    style InputMic fill:#DCE775,stroke:#4CAF50,stroke-width:2px,font-fill:#FFFFFF
-    style OutputSpeaker fill:#DCE775,stroke:#4CAF50,stroke-width:2px,font-fill:#FFFFFF
-    style DeepgramSTT fill:#81D4FA,stroke:#2196F3,stroke-width:2px,font-fill:#FFFFFF
-    style TransEvents fill:#BA68C8,stroke:#9C27B0,stroke-width:2px,font-fill:#FFFFFF
-    style TranscriptBuffer fill:#FFD54F,stroke:#FFC107,stroke-width:2px,font-fill:#FFFFFF
-    style UserMsgProc fill:#EF9A9A,stroke:#F44336,stroke-width:2px,font-fill:#FFFFFF
-    style GroqChat fill:#FFF8DC,stroke:#FFEB3B,stroke-width:2px,font-fill:#FFFFFF
-    style CohereEmbed fill:#FFF8DC,stroke:#FFEB3B,stroke-width:2px,font-fill:#FFFFFF
-    style PineconeDB fill:#FFF8DC,stroke:#FFEB3B,stroke-width:2px,font-fill:#FFFFFF
-    style RAGContext fill:#FFF8DC,stroke:#FFEB3B,stroke-width:2px,font-fill:#FFFFFF
-    style AIText fill:#FFF8DC,stroke:#FFEB3B,stroke-width:2px,font-fill:#FFFFFF
-    style DeepgramTTS fill:#FFF8DC,stroke:#FFEB3B,stroke-width:2px,font-fill:#FFFFFF
+    style InputMic fill:#DCE775,stroke:#4CAF50,stroke-width:2px,color:#000000
+    style OutputSpeaker fill:#DCE775,stroke:#4CAF50,stroke-width:2px,color:#000000
+    style DeepgramSTT fill:#81D4FA,stroke:#2196F3,stroke-width:2px,color:#000000
+    style TransEvents fill:#BA68C8,stroke:#9C27B0,stroke-width:2px,color:#000000
+    style TranscriptBuffer fill:#FFD54F,stroke:#FFC107,stroke-width:2px,color:#000000
+    style UserMsgProc fill:#EF9A9A,stroke:#F44336,stroke-width:2px,color:#000000
+    style GroqChat fill:#FFF8DC,stroke:#FFEB3B,stroke-width:2px,color:#000000
+    style CohereEmbed fill:#FFF8DC,stroke:#FFEB3B,stroke-width:2px,color:#000000
+    style PineconeDB fill:#FFF8DC,stroke:#FFEB3B,stroke-width:2px,color:#000000
+    style RAGContext fill:#FFF8DC,stroke:#FFEB3B,stroke-width:2px,color:#000000
+    style AIText fill:#FFF8DC,stroke:#FFEB3B,stroke-width:2px,color:#000000
+    style DeepgramTTS fill:#FFF8DC,stroke:#FFEB3B,stroke-width:2px,color:#000000
 
 ```
 *Figure 3: Voice Agent Internal Components and Data Flow. This diagram details the internal mechanisms of the Voice Agent, from live audio input to text processing, RAG integration, LLM interaction, and audio output.*
