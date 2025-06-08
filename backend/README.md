@@ -34,17 +34,17 @@ graph TD
         K
     end
 
-    style A fill:#DCE775,stroke:#4CAF50,stroke-width:2px,color:#333
-    style B fill:#81D4FA,stroke:#2196F3,stroke-width:2px,color:#333
-    style C fill:#BA68C8,stroke:#9C27B0,stroke-width:2px,color:#333
-    style D fill:#FFD54F,stroke:#FFC107,stroke-width:2px,color:#333
-    style E fill:#EF9A9A,stroke:#F44336,stroke-width:2px,color:#333
-    style F fill:#FFF8DC,stroke:#FFEB3B,stroke-width:2px,color:#333
-    style G fill:#FFF8DC,stroke:#FFEB3B,stroke-width:2px,color:#333
-    style H fill:#FFF8DC,stroke:#FFEB3B,stroke-width:2px,color:#333
-    style I fill:#FFF8DC,stroke:#FFEB3B,stroke-width:2px,color:#333
-    style J fill:#FFF8DC,stroke:#FFEB3B,stroke-width:2px,color:#333
-    style K fill:#FFF8DC,stroke:#FFEB3B,stroke-width:2px,color:#333
+    style A fill:#DCE775,stroke:#4CAF50,stroke-width:2px,color:#FFFFFF
+    style B fill:#81D4FA,stroke:#2196F3,stroke-width:2px,color:#FFFFFF
+    style C fill:#BA68C8,stroke:#9C27B0,stroke-width:2px,color:#FFFFFF
+    style D fill:#FFD54F,stroke:#FFC107,stroke-width:2px,color:#FFFFFF
+    style E fill:#EF9A9A,stroke:#F44336,stroke-width:2px,color:#FFFFFF
+    style F fill:#FFF8DC,stroke:#FFEB3B,stroke-width:2px,color:#FFFFFF
+    style G fill:#FFF8DC,stroke:#FFEB3B,stroke-width:2px,color:#FFFFFF
+    style H fill:#FFF8DC,stroke:#FFEB3B,stroke-width:2px,color:#FFFFFF
+    style I fill:#FFF8DC,stroke:#FFEB3B,stroke-width:2px,color:#FFFFFF
+    style J fill:#FFF8DC,stroke:#FFEB3B,stroke-width:2px,color:#FFFFFF
+    style K fill:#FFF8DC,stroke:#FFEB3B,stroke-width:2px,color:#FFFFFF
 
 ```
 *Figure 1: Overall Project Architecture Diagram. This diagram illustrates the high-level components of the system, showing how the Frontend interacts with the Backend Orchestrator, which in turn communicates with various microservices and external APIs (Groq, Deepgram, Pinecone/Cohere).* 
@@ -99,18 +99,31 @@ sequenceDiagram
 
 ```mermaid
 graph TD
-    A[Live Audio Input (Microphone)] --> B(Deepgram STT Client)
-    B --> C{Transcription Events}
-    C --> D[Transcript Buffer]
-    D --> E[User Message Processing]
-    E --> F{Groq Chat API}
-    E --> G[Cohere Embeddings]
-    G --> H[Pinecone Vector DB]
-    H --> I[RAG Context Retrieval]
+    A[Live Audio Input (Microphone)]
+    B(Deepgram STT Client)
+    C{Transcription Events}
+    D[Transcript Buffer]
+    E[User Message Processing]
+    F{Groq Chat API}
+    G[Cohere Embeddings]
+    H[Pinecone Vector DB]
+    I[RAG Context Retrieval]
+    J[AI Text Response]
+    K(Deepgram TTS Client)
+    L[Audio Output (Speaker)]
+
+    A --> B
+    B --> C
+    C --> D
+    D --> E
+    E --> F
+    E --> G
+    G --> H
+    H --> I
     I --> F
-    F --> J[AI Text Response]
-    J --> K(Deepgram TTS Client)
-    K --> L[Audio Output (Speaker)]
+    F --> J
+    J --> K
+    K --> L
 
     subgraph Voice Agent (`backend/voiceAgent`)
         B
@@ -125,18 +138,18 @@ graph TD
         K
     end
 
-    style A fill:#DCE775,stroke:#4CAF50,stroke-width:2px,color:#333
-    style L fill:#DCE775,stroke:#4CAF50,stroke-width:2px,color:#333
-    style B fill:#81D4FA,stroke:#2196F3,stroke-width:2px,color:#333
-    style C fill:#BA68C8,stroke:#9C27B0,stroke-width:2px,color:#333
-    style D fill:#FFD54F,stroke:#FFC107,stroke-width:2px,color:#333
-    style E fill:#EF9A9A,stroke:#F44336,stroke-width:2px,color:#333
-    style F fill:#FFF8DC,stroke:#FFEB3B,stroke-width:2px,color:#333
-    style G fill:#FFF8DC,stroke:#FFEB3B,stroke-width:2px,color:#333
-    style H fill:#FFF8DC,stroke:#FFEB3B,stroke-width:2px,color:#333
-    style I fill:#FFF8DC,stroke:#FFEB3B,stroke-width:2px,color:#333
-    style J fill:#FFF8DC,stroke:#FFEB3B,stroke-width:2px,color:#333
-    style K fill:#FFF8DC,stroke:#FFEB3B,stroke-width:2px,color:#333
+    style A fill:#DCE775,stroke:#4CAF50,stroke-width:2px,color:#FFFFFF
+    style L fill:#DCE775,stroke:#4CAF50,stroke-width:2px,color:#FFFFFF
+    style B fill:#81D4FA,stroke:#2196F3,stroke-width:2px,color:#FFFFFF
+    style C fill:#BA68C8,stroke:#9C27B0,stroke-width:2px,color:#FFFFFF
+    style D fill:#FFD54F,stroke:#FFC107,stroke-width:2px,color:#FFFFFF
+    style E fill:#EF9A9A,stroke:#F44336,stroke-width:2px,color:#FFFFFF
+    style F fill:#FFF8DC,stroke:#FFEB3B,stroke-width:2px,color:#FFFFFF
+    style G fill:#FFF8DC,stroke:#FFEB3B,stroke-width:2px,color:#FFFFFF
+    style H fill:#FFF8DC,stroke:#FFEB3B,stroke-width:2px,color:#FFFFFF
+    style I fill:#FFF8DC,stroke:#FFEB3B,stroke-width:2px,color:#FFFFFF
+    style J fill:#FFF8DC,stroke:#FFEB3B,stroke-width:2px,color:#FFFFFF
+    style K fill:#FFF8DC,stroke:#FFEB3B,stroke-width:2px,color:#FFFFFF
 
 ```
 *Figure 3: Voice Agent Internal Components and Data Flow. This diagram details the internal mechanisms of the Voice Agent, from live audio input to text processing, RAG integration, LLM interaction, and audio output.*
