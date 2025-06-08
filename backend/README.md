@@ -1,3 +1,6 @@
+# Backend Architecture
+
+This `backend` directory houses the core FastAPI application, which acts as the central orchestration layer for the entire multimodal mental health assessment system. It is designed to integrate various specialized microservices, processing diverse data streams (voice, gaze, emotion) to generate comprehensive psychological assessment reports.
 
 ## Overall Project Architecture
 
@@ -9,12 +12,12 @@ graph TD
     B --> C[Voice Agent Service: Chat & TTS]
     B --> D[Gaze Tracking Service: Eye Tracking Analysis]
     B --> E[Emotion Recognition Service: Facial Emotion Analysis]
-    C --&gt; F[Groq API: LLM for Chat]
-    B --&gt; G[Groq API: LLM for Report Generation]
-    C --&gt; H[Deepgram API: Speech-to-Text & Text-to-Speech]
-    C --&gt; I[Pinecone/Cohere: RAG Context for Chat]
-    D --&gt; J[Pinecone/Cohere: RAG Context for Gaze Report]
-    E --&gt; K[Pinecone/Cohere: RAG Context for Emotion Report]
+    C --> F[Groq API: LLM for Chat]
+    B --> G[Groq API: LLM for Report Generation]
+    C --> H[Deepgram API: Speech-to-Text & Text-to-Speech]
+    C --> I[Pinecone/Cohere: RAG Context for Chat]
+    D --> J[Pinecone/Cohere: RAG Context for Gaze Report]
+    E --> K[Pinecone/Cohere: RAG Context for Emotion Report]
 
     subgraph Microservices
         C
@@ -98,13 +101,13 @@ sequenceDiagram
 graph TD
     A[Live Audio Input (Microphone)] --> B(Deepgram STT Client)
     B --> C{Transcription Events}
-    C --&gt; D[Transcript Buffer]
-    D --&gt; E[User Message Processing]
+    C --> D[Transcript Buffer]
+    D --> E[User Message Processing]
     E --> F{Groq Chat API}
     E --> G[Cohere Embeddings]
     G --> H[Pinecone Vector DB]
-    H --&gt; I[RAG Context Retrieval]
-    I --&gt; F
+    H --> I[RAG Context Retrieval]
+    I --> F
     F --> J[AI Text Response]
     J --> K(Deepgram TTS Client)
     K --> L[Audio Output (Speaker)]
@@ -188,5 +191,4 @@ TRANSCRIPT_GET_URL="http://127.0.0.1:8002/transcript"
     (Ensure your gaze tracking, emotion recognition, and voice chat/TTS microservices are also running on their respective ports, e.g., 8000, 8001, 8002.)
 
 This will start the backend server, typically accessible at `http://127.0.0.1:8003`.
-
 
