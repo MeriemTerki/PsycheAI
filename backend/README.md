@@ -125,7 +125,7 @@ graph TD
     AIText --> DeepgramTTS
     DeepgramTTS --> OutputSpeaker
 
-    subgraph Voice Agent (backend/voiceAgent)
+    subgraph Voice Agent - backend/voiceAgent
         DeepgramSTT
         TransEvents
         TranscriptBuffer
@@ -150,8 +150,6 @@ graph TD
     style RAGContext fill:#FFF8DC,stroke:#FFEB3B,stroke-width:2px,color:#000000
     style AIText fill:#FFF8DC,stroke:#FFEB3B,stroke-width:2px,color:#000000
     style DeepgramTTS fill:#FFF8DC,stroke:#FFEB3B,stroke-width:2px,color:#000000
-
-```
 *Figure 3: Voice Agent Internal Components and Data Flow. This diagram details the internal mechanisms of the Voice Agent, from live audio input to text processing, RAG integration, LLM interaction, and audio output.*
 
 ## API Endpoints
