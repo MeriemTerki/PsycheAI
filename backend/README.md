@@ -125,17 +125,18 @@ graph TD
     AIText --> DeepgramTTS
     DeepgramTTS --> OutputSpeaker
 
-    subgraph VoiceAgentModule["Voice Agent (`backend/voiceAgent`)"]
-        DeepgramSTT
-        TransEvents
-        TranscriptBuffer
-        UserMsgProc
-        GroqChat
-        CohereEmbed
-        PineconeDB
-        RAGContext
-        AIText
-        DeepgramTTS
+    subgraph voice_agent_subgraph[Voice Agent]
+        direction TD
+        DeepgramSTT(Deepgram STT Client)
+        TransEvents{Transcription Events}
+        TranscriptBuffer[Transcript Buffer]
+        UserMsgProc[User Message Processing]
+        GroqChat{Groq Chat API}
+        CohereEmbed[Cohere Embeddings]
+        PineconeDB[Pinecone Vector DB]
+        RAGContext[RAG Context Retrieval]
+        AIText[AI Text Response]
+        DeepgramTTS(Deepgram TTS Client)
     end
 
     style InputMic fill:#DCE775,stroke:#4CAF50,stroke-width:2px,color:#000000
@@ -150,7 +151,7 @@ graph TD
     style RAGContext fill:#FFF8DC,stroke:#FFEB3B,stroke-width:2px,color:#000000
     style AIText fill:#FFF8DC,stroke:#FFEB3B,stroke-width:2px,color:#000000
     style DeepgramTTS fill:#FFF8DC,stroke:#FFEB3B,stroke-width:2px,color:#000000
-    style VoiceAgentModule fill:#C0C0C0,stroke:#808080,stroke-width:2px,color:#000000
+    style voice_agent_subgraph fill:#C0C0C0,stroke:#808080,stroke-width:2px,color:#000000
 
 ```
 *Figure 3: Voice Agent Internal Components and Data Flow. This diagram details the internal mechanisms of the Voice Agent, from live audio input to text processing, RAG integration, LLM interaction, and audio output.*
