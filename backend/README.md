@@ -100,17 +100,21 @@ sequenceDiagram
 ```mermaid
 graph TD
     InputMic(Live Audio Input - Microphone)
-    DeepgramSTT(Deepgram STT Client)
-    TransEvents{Transcription Events}
-    TranscriptBuffer[Transcript Buffer]
-    UserMsgProc[User Message Processing]
-    GroqChat{Groq Chat API}
-    CohereEmbed[Cohere Embeddings]
-    PineconeDB[Pinecone Vector DB]
-    RAGContext[RAG Context Retrieval]
-    AIText[AI Text Response]
-    DeepgramTTS(Deepgram TTS Client)
     OutputSpeaker(Audio Output - Speaker)
+
+    subgraph voice_agent_subgraph["Voice Agent"]
+        direction TD
+        DeepgramSTT(Deepgram STT Client)
+        TransEvents{Transcription Events}
+        TranscriptBuffer[Transcript Buffer]
+        UserMsgProc[User Message Processing]
+        GroqChat{Groq Chat API}
+        CohereEmbed[Cohere Embeddings]
+        PineconeDB[Pinecone Vector DB]
+        RAGContext[RAG Context Retrieval]
+        AIText[AI Text Response]
+        DeepgramTTS(Deepgram TTS Client)
+    end
 
     InputMic --> DeepgramSTT
     DeepgramSTT --> TransEvents
@@ -125,32 +129,18 @@ graph TD
     AIText --> DeepgramTTS
     DeepgramTTS --> OutputSpeaker
 
-    subgraph voice_agent_subgraph[Voice Agent]
-        direction TD
-        DeepgramSTT(Deepgram STT Client)
-        TransEvents{Transcription Events}
-        TranscriptBuffer[Transcript Buffer]
-        UserMsgProc[User Message Processing]
-        GroqChat{Groq Chat API}
-        CohereEmbed[Cohere Embeddings]
-        PineconeDB[Pinecone Vector DB]
-        RAGContext[RAG Context Retrieval]
-        AIText[AI Text Response]
-        DeepgramTTS(Deepgram TTS Client)
-    end
-
-    style InputMic fill:#DCE775,stroke:#4CAF50,stroke-width:2px,color:#000000
-    style OutputSpeaker fill:#DCE775,stroke:#4CAF50,stroke-width:2px,color:#000000
-    style DeepgramSTT fill:#81D4FA,stroke:#2196F3,stroke-width:2px,color:#000000
-    style TransEvents fill:#BA68C8,stroke:#9C27B0,stroke-width:2px,color:#000000
-    style TranscriptBuffer fill:#FFD54F,stroke:#FFC107,stroke-width:2px,color:#000000
-    style UserMsgProc fill:#EF9A9A,stroke:#F44336,stroke-width:2px,color:#000000
-    style GroqChat fill:#FFF8DC,stroke:#FFEB3B,stroke-width:2px,color:#000000
-    style CohereEmbed fill:#FFF8DC,stroke:#FFEB3B,stroke-width:2px,color:#000000
-    style PineconeDB fill:#FFF8DC,stroke:#FFEB3B,stroke-width:2px,color:#000000
-    style RAGContext fill:#FFF8DC,stroke:#FFEB3B,stroke-width:2px,color:#000000
-    style AIText fill:#FFF8DC,stroke:#FFEB3B,stroke-width:2px,color:#000000
-    style DeepgramTTS fill:#FFF8DC,stroke:#FFEB3B,stroke-width:2px,color:#000000
+    style InputMic fill:#DCE775,stroke:#4CAF50,stroke-width:2px
+    style OutputSpeaker fill:#DCE775,stroke:#4CAF50,stroke-width:2px
+    style DeepgramSTT fill:#81D4FA,stroke:#2196F3,stroke-width:2px
+    style TransEvents fill:#BA68C8,stroke:#9C27B0,stroke-width:2px
+    style TranscriptBuffer fill:#FFD54F,stroke:#FFC107,stroke-width:2px
+    style UserMsgProc fill:#EF9A9A,stroke:#F44336,stroke-width:2px
+    style GroqChat fill:#FFF8DC,stroke:#FFEB3B,stroke-width:2px
+    style CohereEmbed fill:#FFF8DC,stroke:#FFEB3B,stroke-width:2px
+    style PineconeDB fill:#FFF8DC,stroke:#FFEB3B,stroke-width:2px
+    style RAGContext fill:#FFF8DC,stroke:#FFEB3B,stroke-width:2px
+    style AIText fill:#FFF8DC,stroke:#FFEB3B,stroke-width:2px
+    style DeepgramTTS fill:#FFF8DC,stroke:#FFEB3B,stroke-width:2px
     style voice_agent_subgraph fill:#C0C0C0,stroke:#808080,stroke-width:2px,color:#000000
 
 ```
