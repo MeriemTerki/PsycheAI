@@ -1,6 +1,3 @@
-# Backend Architecture
-
-This `backend` directory houses the core FastAPI application, which acts as the central orchestration layer for the entire multimodal mental health assessment system. It is designed to integrate various specialized microservices, processing diverse data streams (voice, gaze, emotion) to generate comprehensive psychological assessment reports.
 
 ## Overall Project Architecture
 
