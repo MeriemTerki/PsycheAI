@@ -1,4 +1,4 @@
-# Unified Mental Health Assessment System
+# LLM-Powered Voice-Driven Mental Wellness Assessment with Gaze and Emotion Analysis
 
 This project is an AI-powered mental wellness assessment system that integrates voice conversation analysis with real-time gaze tracking and emotion recognition to provide a comprehensive mental health assessment report.
 
@@ -9,21 +9,6 @@ This project is an AI-powered mental wellness assessment system that integrates 
 - **Real-time Emotion Recognition**: Detects and interprets facial expressions to understand emotional states.
 - **Comprehensive Assessment Reports**: Generates detailed reports synthesizing data from voice, gaze, and emotion analysis, including personalized recommendations.
 - **Supportive and Empathetic AI**: Designed to be a compassionate mental health assistant, avoiding clinical diagnoses.
-
-## Technologies Used
-
-### Frontend
-- **React**: For building the user interface.
-- **Webcam**: For real-time video capture.
-- **Speech Recognition API**: For converting user speech to text.
-- **Custom CSS-in-JS**: For styling the application.
-
-### Backend
-- **FastAPI**: For building the RESTful APIs.
-- **Python**: Core language for backend logic and AI integrations.
-- **Groq API**: For large language model (LLM) based conversational AI and report generation.
-- **Httpx**: For making asynchronous HTTP requests to other microservices.
-- **Logging**: For application monitoring and debugging.
 
 ### APIs
 - **Gaze Tracking Service**: Handles real-time eye tracking analysis (e.g., `http://127.0.0.1:8001`).
