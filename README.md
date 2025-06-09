@@ -37,9 +37,20 @@ Install Python dependencies:
 ```bash
 pip install -r requirements.txt
 ```
-Create a `.env` file in the `backend/app` directory with your Groq API key:
+Create a `.env` file in the `backend/app` directory with the following :
 ```
 GROQ_API_KEY="your_groq_api_key_here"
+DEEPGRAM_API_KEY="your_deepgram_api_key_here"
+PINECONE_API_KEY="your_pinecone_api_key_here"
+PINECONE_INDEX_NAME=ai-agent
+COHERE_API_KEY="your_cohere_api_key_here"
+GAZE_CAPTURE_URL=http://127.0.0.1:8001/capture-eye-tracking
+GAZE_REPORT_URL=http://127.0.0.1:8001/generate-eye-tracking-report
+EMOTION_API_URL=http://127.0.0.1:8000/analyze-live-emotion
+CHAT_API_URL=http://127.0.0.1:8002/chat
+TRANSCRIPT_GET_URL=http://127.0.0.1:8002/transcript
+SESSION_API_URL=http://127.0.0.1:8003/start-session
+REPORT_GET_URL=http://127.0.0.1:8003/get-report
 ```
 You might also need to configure the URLs for the microservices in the `.env` file if they are not running on the default ports:
 ```
