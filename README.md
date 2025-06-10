@@ -93,7 +93,7 @@ The frontend application should open in your browser at `http://localhost:3000`.
 
 ## Demo Video
 
-[Link to Demo Video Here](https://www.youtube.com/watch?v=C7LdxG9kUxw)
+[Link to Demo Video Here](https://www.youtube.com/watch?v=MlXCU632cXc&t=126s)
 
 ## Contact
 
