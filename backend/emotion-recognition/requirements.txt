@@ -57,7 +57,6 @@ humanfriendly==10.0
 idna==3.7
 ifaddr==0.2.0
 imageio==2.37.0
-inference==0.42.1
 iniconfig==2.1.0
 ipykernel==6.29.4
 ipython==8.34.0
@@ -179,6 +178,6 @@ opencv-python
 mediapipe
 scipy
 numpy
-protobuf>=4.25.3,<5  # Changed to be compatible with mediapipe
+protobuf>=4.25.3,<5
 transformers
 sentencepiece
