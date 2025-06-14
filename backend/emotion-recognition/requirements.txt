@@ -14,4 +14,4 @@ langchain-cohere>=0.0.2
 langchain-pinecone>=0.0.3
 groq==0.7.0
 rich==13.0.1
-pydantic==2.7.4
+pydantic==2.9.2
