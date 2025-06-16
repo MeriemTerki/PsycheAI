@@ -2,10 +2,10 @@ fastapi==0.110.3
 uvicorn[standard]==0.29.0
 pydantic==2.7.4
 python-dotenv==1.0.1
-numpy==1.26.4
-opencv-python==4.10.0.84
-mediapipe==0.10.11
-scipy==1.15.2
+numpy==2.0.0  # Updated for Python 3.13
+opencv-python-headless==4.10.0.84
+mediapipe==0.10.12  # Latest version with Python 3.13 support
+scipy==1.13.0  # Updated for Python 3.13
 pillow==10.4.0
 rich==13.0.1
 cohere==4.0.0
