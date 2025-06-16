@@ -7,10 +7,11 @@ scipy==1.15.2
 numpy==1.26.4
 python-dotenv==1.0.1
 groq==0.7.0
-pinecone-client>=3.0.0
-cohere>=4.0.0
+pinecone-client==3.0.0
+cohere==4.0.0
 langchain==0.3.23
-langchain-community>=0.0.29
-langchain-cohere>=0.0.2
-langchain-pinecone>=0.0.3
+langchain-community==0.0.29
+langchain-cohere==0.0.2
+langchain-pinecone==0.0.3
 rich==13.0.1
+protobuf>=4.25.3,<5
