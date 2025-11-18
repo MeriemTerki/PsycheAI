@@ -23,9 +23,13 @@ app = FastAPI(
     description="Orchestrates gaze tracking, emotion recognition, voice chat, and final report generation",
 )
 
+# Configure CORS - allow multiple origins from environment
+frontend_origins = os.getenv("FRONTEND_ORIGINS", "http://localhost:8080,http://localhost:3000")
+origins = [origin.strip() for origin in frontend_origins.split(",")]
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[os.getenv("FRONTEND_ORIGINS", "http://localhost:8080")],
+    allow_origins=origins if "*" not in origins else ["*"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -316,6 +320,11 @@ async def start_session(req: SessionRequest):
 @app.get("/")
 async def root():
     return {"message": "Unified Mental Health Assessment API"}
+
+@app.get("/health")
+async def health_check():
+    """Health check endpoint for Render deployment."""
+    return {"status": "healthy", "service": "main-api"}
 
 @app.post("/generate-eye-tracking-report")
 async def generate_eye_tracking_report(request: Dict[str, Any]):

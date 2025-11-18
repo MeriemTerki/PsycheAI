@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect } from "react";
 import Webcam from "react-webcam";
 import DiagnosisResults from "./DiagnosisResults";
+import { ENDPOINTS } from "@/lib/config";
 
 interface Message {
   sender: "ai" | "user";
@@ -101,7 +102,7 @@ const DiagnosisSection: React.FC = () => {
         recognitionRef.current.stop();
       }
 
-      const res = await fetch("http://127.0.0.1:8002/tts", {
+      const res = await fetch(ENDPOINTS.tts(), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ text }),
@@ -162,13 +163,13 @@ const DiagnosisSection: React.FC = () => {
       const timeoutId = setTimeout(() => controller.abort(), 5000);
 
       const [gazeRes, emotionRes] = await Promise.allSettled([
-        fetch("http://127.0.0.1:8001/capture-eye-tracking", {
+        fetch(ENDPOINTS.captureEyeTracking(), {
           method: "POST",
           headers: { "Content-Type": "application/json", "Accept": "application/json" },
           body: JSON.stringify(payload),
           signal: controller.signal,
         }),
-        fetch("http://127.0.0.1:8000/analyze-live-emotion", {
+        fetch(ENDPOINTS.analyzeLiveEmotion(), {
           method: "POST",
           headers: { "Content-Type": "application/json", "Accept": "application/json" },
           body: JSON.stringify(payload),
@@ -354,7 +355,7 @@ const DiagnosisSection: React.FC = () => {
       console.log("[App] sending /chat with payload:", messagesRef.current);
       setIsLoading(true);
 
-      const res = await fetch("http://127.0.0.1:8002/chat", {
+      const res = await fetch(ENDPOINTS.chat(), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ messages: messagesRef.current }),
@@ -399,7 +400,7 @@ const DiagnosisSection: React.FC = () => {
       while (attempts < maxAttempts) {
         attempts++;
         console.log(`[Aggregate] Attempt ${attempts} to call /generate-gaze-report with session_id: ${sessionIdRef.current}`);
-        const gazeRes = await fetch("http://127.0.0.1:8001/generate-gaze-report", {
+        const gazeRes = await fetch(ENDPOINTS.generateGazeReport(), {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ session_id: sessionIdRef.current }),
@@ -540,7 +541,7 @@ const DiagnosisSection: React.FC = () => {
 
       // Upload transcript
       console.log("[Session] Uploading transcript...");
-      const transcriptResponse = await fetch("http://127.0.0.1:8002/upload_transcript", {
+      const transcriptResponse = await fetch(ENDPOINTS.uploadTranscript(), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ transcript: transcriptLogRef.current.join("\n") }),
@@ -581,7 +582,7 @@ const DiagnosisSection: React.FC = () => {
       });
 
       // Get final results
-      const res = await fetch("http://127.0.0.1:8003/start-session", {
+      const res = await fetch(ENDPOINTS.startSession(), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(requestData),
