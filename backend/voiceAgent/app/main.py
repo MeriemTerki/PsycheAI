@@ -71,6 +71,11 @@ async def tts_endpoint(request: TTSRequest):
         console.print(f"Error in /tts: {e}", style="red")
         raise HTTPException(status_code=500, detail=str(e))
 
+@app.get("/health")
+async def health_check():
+    """Health check endpoint for Render deployment."""
+    return {"status": "healthy", "service": "voice-agent"}
+
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run("app.main:app", host="0.0.0.0", port=8002, reload=True)
