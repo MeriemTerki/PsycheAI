@@ -15,5 +15,4 @@ RUN pip install --no-cache-dir --upgrade -r /home/requirements.txt
 
 COPY ./app /home/app
 
-# Use PORT env var from Render, default to 8002
-CMD ["sh", "-c", "uvicorn app.main:app --host 0.0.0.0 --port ${PORT:-8002}"]
+CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "80"]
