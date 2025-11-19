@@ -379,11 +379,6 @@ async def shutdown_event():
         except Exception as e:
             logger.error(f"Failed to clean up {file_path}: {str(e)}")
 
-@app.get("/health")
-async def health_check():
-    """Health check endpoint for Render deployment."""
-    return {"status": "healthy", "service": "gaze-tracking"}
-
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run(app, host="0.0.0.0", port=8001)

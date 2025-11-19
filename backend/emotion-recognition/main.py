@@ -6,18 +6,14 @@ import numpy as np
 from typing import Any, Dict, List
 from datetime import datetime
 import logging
-import os
 from fastapi.middleware.cors import CORSMiddleware
 
 app = FastAPI(title="Emotion Recognition API")
 
-# Configure CORS - allow multiple origins from environment
-frontend_origins = os.getenv("FRONTEND_ORIGINS", "http://localhost:8080,http://localhost:3000,http://127.0.0.1:8080")
-origins = [origin.strip() for origin in frontend_origins.split(",")]
-
+# Configure CORS
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=origins if "*" not in origins else ["*"],
+    allow_origins=["http://localhost:8080", "http://127.0.0.1:8080"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -91,11 +87,6 @@ async def analyze_live_emotion(request: FrameRequest):
             interpretation="",
             error=str(e)
         )
-
-@app.get("/health")
-async def health_check():
-    """Health check endpoint for Render deployment."""
-    return {"status": "healthy", "service": "emotion-recognition"}
 
 if __name__ == "__main__":
     import uvicorn
