@@ -1,16 +1,14 @@
-
-Readme · MD
 # LLM-Powered Voice-Driven Mental Wellness Assessment with Gaze and Emotion Analysis
  
 PsycheAI is a mental wellness assessment app. The user talks with a voice assistant while the webcam is used to track their gaze and facial emotions. When the session ends, everything is combined into one report.
  
 It is a research project and is not meant to diagnose anything or replace a professional.
  
-[Demo video](https://www.youtube.com/watch?v=MlXCU632cXc&t=126s) | [Full report (PDF)](PsycheAI_Report.pdf)
+[Demo video](https://www.youtube.com/watch?v=MlXCU632cXc&t=126s)
  
 ## Architecture
  
-![PsycheAI architecture](docs/architecture.png)
+![PsycheAI architecture](architecture.png)
  
 The system is made of three pipelines that run at the same time during a session:
  
