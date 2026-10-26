@@ -2,9 +2,8 @@
  
 PsycheAI is a mental wellness assessment app. The user talks with a voice assistant while the webcam is used to track their gaze and facial emotions. When the session ends, everything is combined into one report.
  
-It is a research project and is not meant to diagnose anything or replace a professional.
- 
-[Demo video](https://www.youtube.com/watch?v=MlXCU632cXc&t=126s)
+This is a research project and is not meant to diagnose anything or replace a professional.
+
  
 ## Architecture
  
